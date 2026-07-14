@@ -1,0 +1,11 @@
+# Получить api_id и api_hash на https://my.telegram.org/apps
+api_id       = 123456
+api_hash     = "your_api_hash_here"
+phone        = "+79991234567"
+session_path = "rustbot.session"
+prefix       = "."
+owner_id     = 123456789   # Твой Telegram ID (необязательно)
+
+# Лимиты для модуля eval/exec (секунды)
+eval_timeout = 15
+exec_timeout = 10
