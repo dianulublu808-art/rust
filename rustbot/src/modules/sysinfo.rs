@@ -46,7 +46,7 @@ async fn handle_sysinfo(ctx: &Context) -> Result<()> {
         let total_swap = sys.total_swap();
         let used_swap  = sys.used_swap();
 
-        let cpu_usage = sys.global_cpu_usage();
+        let cpu_usage = sys.global_cpu_info().cpu_usage();
         let cpu_count = sys.cpus().len();
         let cpu_brand = sys.cpus()
             .first()
