@@ -10,8 +10,8 @@ name = "rustbot"
 path = "src/main.rs"
 
 [dependencies]
-grammers-client  = "0.7"
-grammers-session = "0.7"
+grammers-client  = { git = "https://github.com/Lonami/grammers" }
+grammers-session = { git = "https://github.com/Lonami/grammers" }
 tokio            = { version = "1", features = ["full"] }
 anyhow           = "1"
 thiserror        = "1"
