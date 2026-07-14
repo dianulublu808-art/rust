@@ -1,7 +1,7 @@
 use anyhow::Result;
 use async_trait::async_trait;
-use grammers_client::{Client, message::InputMessage};
-use grammers_client::update::Message;
+use grammers_client::{Client, InputMessage, types::Message};
+use grammers_session::PeerRef;
 use std::sync::Arc;
 use crate::config::Config;
 
@@ -30,16 +30,20 @@ pub struct Context {
 }
 
 impl Context {
+    /// Получить PeerRef из текущего сообщения
+    fn peer_ref(&self) -> Result<PeerRef> {
+        match self.message.chat() {
+            Ok(chat) => Ok(PeerRef::from(chat)),
+            Err(peer_ref) => Ok(peer_ref),
+        }
+    }
+
     /// Редактировать исходное сообщение
     pub async fn edit(&self, text: impl AsRef<str>) -> Result<()> {
-        let peer_ref = self
-            .message
-            .peer_ref()
-            .await
-            .ok_or_else(|| anyhow::anyhow!("Не удалось получить peer ref для редактирования"))?;
+        let peer = self.peer_ref()?;
         self.client
             .edit_message(
-                peer_ref,
+                peer,
                 self.message.id(),
                 InputMessage::new().text(text.as_ref()),
             )
@@ -49,13 +53,9 @@ impl Context {
 
     /// Отправить новое сообщение в тот же чат
     pub async fn reply(&self, text: impl AsRef<str>) -> Result<()> {
-        let peer_ref = self
-            .message
-            .peer_ref()
-            .await
-            .ok_or_else(|| anyhow::anyhow!("Не удалось получить peer ref для ответа"))?;
+        let peer = self.peer_ref()?;
         self.client
-            .send_message(peer_ref, InputMessage::new().text(text.as_ref()))
+            .send_message(peer, InputMessage::new().text(text.as_ref()))
             .await
             .map_err(anyhow::Error::from)?;
         Ok(())

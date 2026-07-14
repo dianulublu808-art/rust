@@ -1,7 +1,8 @@
 use super::{Command, Context, Module};
 use anyhow::Result;
 use async_trait::async_trait;
-use grammers_client::peer::Peer;
+use grammers_client::types::Chat;
+use grammers_session::PeerRef;
 
 /// Вспомогательные команды: id, me, delete
 pub struct RawModule;
@@ -46,18 +47,35 @@ impl Module for RawModule {
     }
 }
 
+fn chat_id_str(chat: &Chat) -> String {
+    match chat {
+        Chat::User(u)    => format!("User `{}`", u.bare_id()),
+        Chat::Group(g)   => format!("Group `{}`", g.id()),
+        Chat::Channel(c) => format!("Channel `{}`", c.bare_id()),
+    }
+}
+
+fn peer_ref_from_msg(ctx: &Context) -> PeerRef {
+    match ctx.message.chat() {
+        Ok(chat) => PeerRef::from(chat),
+        Err(peer_ref) => peer_ref,
+    }
+}
+
 async fn handle_id(ctx: &Context) -> Result<()> {
-    let chat_id = match ctx.message.peer() {
-        Some(Peer::User(u))    => format!("User `{}`", u.raw.id()),
-        Some(Peer::Group(g))   => format!("Group `{}`", g.id()),
-        Some(Peer::Channel(c)) => format!("Channel `{}`", c.id()),
-        None                   => "Unknown".to_owned(),
+    let chat_id = match ctx.message.chat() {
+        Ok(chat) => chat_id_str(chat),
+        Err(peer_ref) => format!("`{}`", peer_ref.id),
     };
 
-    let sender_part = match ctx.message.sender() {
-        Some(Peer::User(u)) => format!("\n👤 **Отправитель:** `{}`", u.raw.id()),
-        _                   => String::new(),
-    };
+    let sender_part = ctx
+        .message
+        .sender()
+        .map(|s| match s {
+            Chat::User(u) => format!("\n👤 **Отправитель:** `{}`", u.bare_id()),
+            _             => String::new(),
+        })
+        .unwrap_or_default();
 
     ctx.edit(format!("🆔 **Чат:** {chat_id}{sender_part}")).await
 }
@@ -74,7 +92,7 @@ async fn handle_me(ctx: &Context) -> Result<()> {
          🆔 ID: `{}`\n\
          📛 Имя: `{}`\n\
          🔖 Username: {}",
-        me.raw.id(),
+        me.bare_id(),
         me.full_name(),
         username,
     ))
@@ -82,19 +100,15 @@ async fn handle_me(ctx: &Context) -> Result<()> {
 }
 
 async fn handle_delete(ctx: &Context) -> Result<()> {
-    let peer_ref = ctx
-        .message
-        .peer_ref()
-        .await
-        .ok_or_else(|| anyhow::anyhow!("cannot get peer ref"))?;
+    let peer = peer_ref_from_msg(ctx);
 
     if let Some(reply) = ctx.message.reply_to_message_id() {
         ctx.client
-            .delete_messages(peer_ref.clone(), &[reply])
+            .delete_messages(peer.clone(), &[reply])
             .await?;
     }
     ctx.client
-        .delete_messages(peer_ref, &[ctx.message.id()])
+        .delete_messages(peer, &[ctx.message.id()])
         .await?;
     Ok(())
 }
@@ -105,15 +119,11 @@ async fn handle_cat(ctx: &Context) -> Result<()> {
         None => return ctx.edit("❌ Ответь на сообщение командой `.cat`").await,
     };
 
-    let peer_ref = ctx
-        .message
-        .peer_ref()
-        .await
-        .ok_or_else(|| anyhow::anyhow!("cannot get peer ref"))?;
+    let peer = peer_ref_from_msg(ctx);
 
     let mut messages = ctx
         .client
-        .get_messages_by_id(peer_ref, &[reply_id])
+        .get_messages_by_id(peer, &[reply_id])
         .await?;
 
     let text = messages

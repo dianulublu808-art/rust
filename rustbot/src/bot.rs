@@ -7,55 +7,55 @@ use crate::{
     },
 };
 use anyhow::{bail, Context as _, Result};
-use grammers_client::{Client, SenderPool, SignInError};
-use grammers_client::client::UpdatesConfiguration;
-use grammers_client::update::Update;
-use grammers_client::session::storages::SqliteSession;
+use grammers_client::{Client, SignInError, UpdatesConfiguration};
+use grammers_mtsender::SenderPool;
+use grammers_session::storages::TlSession;
 use std::sync::Arc;
 use tokio::signal;
 use tracing::{error, info};
 
 pub async fn run(config: Arc<Config>) -> Result<()> {
+    // TlSession — синхронная загрузка / создание файла сессии
     let session = Arc::new(
-        SqliteSession::open(&config.session_path)
-            .await
+        TlSession::load_file_or_create(&config.session_path)
             .with_context(|| format!("Не удалось открыть сессию '{}'", config.session_path))?,
     );
 
     info!("Подключаюсь к Telegram...");
 
-    let SenderPool { runner, updates, handle } =
-        SenderPool::new(Arc::clone(&session), config.api_id);
+    // Создаём пул соединений — Client::new принимает ссылку на пул
+    let pool = SenderPool::new(Arc::clone(&session), config.api_id);
+    let client = Client::new(&pool);
+    let SenderPool { runner, updates, handle } = pool;
 
-    let client = Client::new(handle.clone());
-
-    // Запускаем сетевой пул в фоне
+    // Запускаем сетевой пул в фоновой задаче
     let pool_task = tokio::spawn(runner.run());
 
     if !client.is_authorized().await? {
         info!("Требуется авторизация...");
         authorize(&client, &config).await?;
+        session
+            .save_to_file(&config.session_path)
+            .with_context(|| "Не удалось сохранить сессию после входа")?;
     }
 
     let me = client.get_me().await?;
     info!(
         "Авторизован как: {} (id={})",
         me.full_name(),
-        me.raw.id()
+        me.bare_id()
     );
 
     let dispatcher = Arc::new(build_dispatcher(Arc::clone(&config)));
 
-    // Поток обновлений
-    let mut update_stream = client
-        .stream_updates(
-            updates,
-            UpdatesConfiguration {
-                catch_up: false,
-                ..Default::default()
-            },
-        )
-        .await;
+    // stream_updates — НЕ async, возвращает UpdateStream напрямую
+    let mut update_stream = client.stream_updates(
+        updates,
+        UpdatesConfiguration {
+            catch_up: false,
+            ..Default::default()
+        },
+    );
 
     // Главный цикл
     let loop_result = tokio::select! {
@@ -66,8 +66,13 @@ pub async fn run(config: Arc<Config>) -> Result<()> {
         }
     };
 
-    // Синхронизируем состояние обновлений
-    update_stream.sync_update_state().await;
+    // Синхронизируем состояние обновлений и сохраняем сессию
+    update_stream.sync_update_state(); // НЕ async
+    if let Err(e) = session.save_to_file(&config.session_path) {
+        error!("Не удалось сохранить сессию: {e}");
+    } else {
+        info!("Сессия сохранена");
+    }
 
     info!("Завершаю соединение...");
     handle.quit();
@@ -94,7 +99,7 @@ fn build_dispatcher(config: Arc<Config>) -> Dispatcher {
 
 async fn event_loop(
     client: &Client,
-    update_stream: &mut grammers_client::client::UpdateStream,
+    update_stream: &mut grammers_client::client::updates::UpdateStream,
     dispatcher: Arc<Dispatcher>,
 ) -> Result<()> {
     info!("Бот запущен, слушаю обновления...");

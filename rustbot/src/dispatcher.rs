@@ -3,8 +3,7 @@ use crate::{
     modules::{Context, Module},
 };
 use anyhow::Result;
-use grammers_client::Client;
-use grammers_client::update::Update;
+use grammers_client::{Client, Update};
 use std::sync::Arc;
 use tracing::{debug, error, warn};
 
@@ -23,7 +22,6 @@ impl Dispatcher {
         Self { modules, config }
     }
 
-    /// Обрабатывает входящее обновление.
     pub async fn handle(&self, client: Client, update: Update) -> Result<()> {
         let msg = match update {
             Update::NewMessage(m) => m,
