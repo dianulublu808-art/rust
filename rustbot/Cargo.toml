@@ -24,6 +24,10 @@ sysinfo          = "0.30"
 tempfile         = "3"
 chrono           = { version = "0.4", features = ["serde"] }
 
+# core2 0.4.0 yanked on crates.io — overriding with git source (same code, not yanked)
+[patch.crates-io]
+core2 = { git = "https://github.com/technocreatives/core2" }
+
 [profile.release]
 opt-level = 3
 lto       = true
