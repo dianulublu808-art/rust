@@ -3,7 +3,8 @@ use crate::{
     modules::{Context, Module},
 };
 use anyhow::Result;
-use grammers_client::{Client, Update};
+use grammers_client::Client;
+use grammers_client::update::Update;
 use std::sync::Arc;
 use tracing::{debug, error, warn};
 
@@ -23,11 +24,10 @@ impl Dispatcher {
     }
 
     /// Обрабатывает входящее обновление.
-    /// Возвращает Ok(()) даже если команда не найдена — ошибки модулей логируются.
     pub async fn handle(&self, client: Client, update: Update) -> Result<()> {
-        let msg = match &update {
-            Update::NewMessage(m) => m.clone(),
-            // Игнорируем остальные типы обновлений
+        let msg = match update {
+            Update::NewMessage(m) => m,
+            Update::MessageEdited(m) => m,
             _ => return Ok(()),
         };
 
@@ -39,7 +39,6 @@ impl Dispatcher {
         let text = msg.text().to_owned();
         let prefix = self.config.prefix_char();
 
-        // Проверяем prefix
         if !text.starts_with(prefix) {
             return Ok(());
         }
@@ -49,7 +48,6 @@ impl Dispatcher {
             return Ok(());
         }
 
-        // Разбиваем на команду и аргументы
         let mut parts = without_prefix.splitn(2, char::is_whitespace);
         let cmd = match parts.next() {
             Some(c) if !c.is_empty() => c.to_lowercase(),
@@ -58,7 +56,6 @@ impl Dispatcher {
         let args_raw = parts.next().unwrap_or("").to_owned();
         let args: Vec<String> = args_raw.split_whitespace().map(str::to_owned).collect();
 
-        // Ищем модуль, который обрабатывает эту команду
         let handler = self.modules.iter().find(|m| {
             m.commands()
                 .iter()

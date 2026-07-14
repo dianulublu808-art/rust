@@ -1,6 +1,7 @@
 use anyhow::Result;
 use async_trait::async_trait;
-use grammers_client::{Client, types::Message};
+use grammers_client::{Client, message::InputMessage};
+use grammers_client::update::Message;
 use std::sync::Arc;
 use crate::config::Config;
 
@@ -16,16 +17,14 @@ pub mod raw;
 pub struct Command {
     pub name: &'static str,
     pub description: &'static str,
-    pub usage: &'static str, // пример: ".ping" или ".eval <код>"
+    pub usage: &'static str,
 }
 
 /// Контекст, передаваемый каждому обработчику
 pub struct Context {
     pub client: Client,
     pub message: Message,
-    /// Аргументы после команды (split по пробелу)
     pub args: Vec<String>,
-    /// Полный текст после команды (включая пробелы)
     pub args_raw: String,
     pub config: Arc<Config>,
 }
@@ -33,12 +32,16 @@ pub struct Context {
 impl Context {
     /// Редактировать исходное сообщение
     pub async fn edit(&self, text: impl AsRef<str>) -> Result<()> {
-        use grammers_client::InputMessage;
+        let peer_ref = self
+            .message
+            .peer_ref()
+            .await
+            .ok_or_else(|| anyhow::anyhow!("Не удалось получить peer ref для редактирования"))?;
         self.client
             .edit_message(
-                self.message.chat(),
+                peer_ref,
                 self.message.id(),
-                InputMessage::text(text.as_ref()),
+                InputMessage::new().text(text.as_ref()),
             )
             .await
             .map_err(anyhow::Error::from)
@@ -46,9 +49,13 @@ impl Context {
 
     /// Отправить новое сообщение в тот же чат
     pub async fn reply(&self, text: impl AsRef<str>) -> Result<()> {
-        use grammers_client::InputMessage;
+        let peer_ref = self
+            .message
+            .peer_ref()
+            .await
+            .ok_or_else(|| anyhow::anyhow!("Не удалось получить peer ref для ответа"))?;
         self.client
-            .send_message(self.message.chat(), InputMessage::text(text.as_ref()))
+            .send_message(peer_ref, InputMessage::new().text(text.as_ref()))
             .await
             .map_err(anyhow::Error::from)?;
         Ok(())
