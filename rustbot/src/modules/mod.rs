@@ -1,6 +1,6 @@
 use anyhow::Result;
 use async_trait::async_trait;
-use grammers_client::{Client, InputMessage, types::Message};
+use grammers_client::{Client, InputMessage, types::update::Message};
 use grammers_session::PeerRef;
 use std::sync::Arc;
 use crate::config::Config;
