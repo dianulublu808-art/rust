@@ -52,6 +52,7 @@ impl Context {
     }
 
     /// Отправить новое сообщение в тот же чат
+    #[allow(dead_code)]
     pub async fn reply(&self, text: impl AsRef<str>) -> Result<()> {
         let peer = self.peer_ref()?;
         self.client

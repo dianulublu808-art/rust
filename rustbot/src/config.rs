@@ -11,6 +11,7 @@ pub struct Config {
     /// Символ-префикс команд (например ".")
     pub prefix: String,
     /// Telegram ID владельца (необязательно)
+    #[allow(dead_code)]
     pub owner_id: Option<i64>,
     /// Таймаут выполнения .eval в секундах
     #[serde(default = "default_eval_timeout")]
