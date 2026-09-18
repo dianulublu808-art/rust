@@ -1,9 +1,9 @@
 [package]
 name        = "rustbot"
-version     = "0.1.0"
+version     = "1.0.0"
 edition     = "2021"
 authors     = ["rustbot"]
-description = "Telegram userbot written in Rust"
+description = "Telegram userbot written in Rust (Heroku-compatible)"
 
 [[bin]]
 name = "rustbot"
@@ -17,6 +17,7 @@ tokio            = { version = "1", features = ["full"] }
 anyhow           = "1"
 thiserror        = "1"
 serde            = { version = "1", features = ["derive"] }
+serde_json       = "1"
 toml             = "0.8"
 tracing          = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
@@ -24,8 +25,8 @@ async-trait      = "0.1"
 sysinfo          = "0.30"
 tempfile         = "3"
 chrono           = { version = "0.4", features = ["serde"] }
+reqwest          = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 
-# core2 0.4.0 yanked on crates.io — overriding with git source (same code, not yanked)
 [patch.crates-io]
 core2 = { git = "https://github.com/technocreatives/core2" }
 

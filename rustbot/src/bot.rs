@@ -2,9 +2,20 @@ use crate::{
     config::Config,
     dispatcher::Dispatcher,
     modules::{
-        eval::EvalModule, exec::ExecModule, help::HelpModule, ping::PingModule,
-        raw::RawModule, sysinfo::SysinfoModule, Module,
+        afk::AfkModule,
+        eval::EvalModule,
+        exec::ExecModule,
+        help::HelpModule,
+        info::InfoModule,
+        notes::NotesModule,
+        ping::PingModule,
+        raw::RawModule,
+        sysinfo::SysinfoModule,
+        translate::TranslateModule,
+        updater::UpdaterModule,
+        Module,
     },
+    storage::Storage,
 };
 use anyhow::{bail, Context as _, Result};
 use grammers_client::{Client, SignInError, UpdatesConfiguration};
@@ -15,20 +26,21 @@ use tokio::signal;
 use tracing::{error, info};
 
 pub async fn run(config: Arc<Config>) -> Result<()> {
-    // TlSession — синхронная загрузка / создание файла сессии
     let session = Arc::new(
         TlSession::load_file_or_create(&config.session_path)
             .with_context(|| format!("Не удалось открыть сессию '{}'", config.session_path))?,
     );
 
+    let storage = Arc::new(
+        Storage::load(&config.storage_path)
+            .with_context(|| "Не удалось загрузить хранилище данных")?,
+    );
+
     info!("Подключаюсь к Telegram...");
 
-    // Создаём пул соединений — Client::new принимает ссылку на пул
     let pool = SenderPool::new(Arc::clone(&session), config.api_id);
     let client = Client::new(&pool);
     let SenderPool { runner, updates, handle } = pool;
-
-    // Запускаем сетевой пул в фоновой задаче
     let pool_task = tokio::spawn(runner.run());
 
     if !client.is_authorized().await? {
@@ -40,15 +52,21 @@ pub async fn run(config: Arc<Config>) -> Result<()> {
     }
 
     let me = client.get_me().await?;
+    let me_id = me.bare_id();
+    let me_username = me.username().map(str::to_owned);
     info!(
         "Авторизован как: {} (id={})",
         me.full_name(),
-        me.bare_id()
+        me_id
     );
 
-    let dispatcher = Arc::new(build_dispatcher(Arc::clone(&config)));
+    let dispatcher = Arc::new(build_dispatcher(
+        Arc::clone(&config),
+        Arc::clone(&storage),
+        me_id,
+        me_username,
+    ));
 
-    // stream_updates — НЕ async, возвращает UpdateStream напрямую
     let mut update_stream = client.stream_updates(
         updates,
         UpdatesConfiguration {
@@ -57,44 +75,48 @@ pub async fn run(config: Arc<Config>) -> Result<()> {
         },
     );
 
-    // Главный цикл
     let loop_result = tokio::select! {
         res = event_loop(&client, &mut update_stream, Arc::clone(&dispatcher)) => res,
         _ = signal::ctrl_c() => {
-            info!("Получен сигнал завершения (Ctrl+C)");
+            info!("Ctrl+C — завершаю...");
             Ok(())
         }
     };
 
-    // Синхронизируем состояние обновлений и сохраняем сессию
-    update_stream.sync_update_state(); // НЕ async
+    update_stream.sync_update_state();
     if let Err(e) = session.save_to_file(&config.session_path) {
         error!("Не удалось сохранить сессию: {e}");
-    } else {
-        info!("Сессия сохранена");
     }
 
-    info!("Завершаю соединение...");
     handle.quit();
     let _ = pool_task.await;
-
     loop_result
 }
 
-fn build_dispatcher(config: Arc<Config>) -> Dispatcher {
+fn build_dispatcher(
+    config: Arc<Config>,
+    storage: Arc<Storage>,
+    me_id: i64,
+    me_username: Option<String>,
+) -> Dispatcher {
     let base_modules: Vec<Arc<dyn Module>> = vec![
         Arc::new(PingModule),
+        Arc::new(InfoModule),
         Arc::new(SysinfoModule),
         Arc::new(EvalModule),
         Arc::new(ExecModule),
         Arc::new(RawModule),
+        Arc::new(NotesModule),
+        Arc::new(AfkModule),
+        Arc::new(TranslateModule),
+        Arc::new(UpdaterModule),
     ];
 
     let help = Arc::new(HelpModule::new(&base_modules));
-    let mut all_modules = base_modules;
-    all_modules.push(help);
+    let mut all = base_modules;
+    all.push(help);
 
-    Dispatcher::new(config, all_modules)
+    Dispatcher::new(config, storage, me_id, me_username, all)
 }
 
 async fn event_loop(
@@ -102,12 +124,11 @@ async fn event_loop(
     update_stream: &mut grammers_client::client::updates::UpdateStream,
     dispatcher: Arc<Dispatcher>,
 ) -> Result<()> {
-    info!("Бот запущен, слушаю обновления...");
+    info!("Бот запущен! Жду команды...");
     loop {
         let update = update_stream.next().await?;
         let dispatcher = Arc::clone(&dispatcher);
         let client = client.clone();
-
         tokio::spawn(async move {
             if let Err(e) = dispatcher.handle(client, update).await {
                 error!("Ошибка диспетчера: {e:#}");
@@ -122,37 +143,32 @@ async fn authorize(client: &Client, config: &Config) -> Result<()> {
     let token = client
         .request_login_code(&config.phone, &config.api_hash)
         .await
-        .with_context(|| "Не удалось запросить код авторизации")?;
+        .with_context(|| "Не удалось запросить код")?;
 
-    print!("Введи код из Telegram для {}: ", config.phone);
+    print!("Код из Telegram для {}: ", config.phone);
     std::io::stdout().flush()?;
     let code = read_line()?;
 
     match client.sign_in(&token, code.trim()).await {
-        Ok(_) => {
-            info!("Авторизация прошла успешно");
-            Ok(())
-        }
-        Err(SignInError::PasswordRequired(pwd_token)) => {
-            print!("Введи пароль двухфакторной аутентификации: ");
+        Ok(_) => Ok(()),
+        Err(SignInError::PasswordRequired(tok)) => {
+            print!("Пароль 2FA: ");
             std::io::stdout().flush()?;
             let pwd = read_line()?;
             client
-                .check_password(pwd_token, pwd.trim())
+                .check_password(tok, pwd.trim())
                 .await
                 .with_context(|| "Неверный пароль 2FA")?;
-            info!("2FA пройдена успешно");
             Ok(())
         }
-        Err(SignInError::InvalidCode) => bail!("Неверный код авторизации"),
+        Err(SignInError::InvalidCode) => bail!("Неверный код"),
         Err(e) => bail!("Ошибка авторизации: {e:?}"),
     }
 }
 
 fn read_line() -> Result<String> {
     use std::io::BufRead;
-    let stdin = std::io::stdin();
     let mut line = String::new();
-    stdin.lock().read_line(&mut line)?;
+    std::io::stdin().lock().read_line(&mut line)?;
     Ok(line)
 }

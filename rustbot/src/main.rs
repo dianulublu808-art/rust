@@ -3,6 +3,7 @@ mod config;
 mod dispatcher;
 mod error;
 mod modules;
+mod storage;
 
 use anyhow::Result;
 use config::Config;
@@ -12,8 +13,6 @@ use tracing_subscriber::{fmt, EnvFilter};
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Инициализация логгера
-    // Уровень по умолчанию: INFO. Переопределяется через RUST_LOG=rustbot=debug
     fmt()
         .with_env_filter(
             EnvFilter::try_from_default_env()

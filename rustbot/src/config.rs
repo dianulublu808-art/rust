@@ -8,21 +8,20 @@ pub struct Config {
     pub api_hash: String,
     pub phone: String,
     pub session_path: String,
-    /// Символ-префикс команд (например ".")
     pub prefix: String,
-    /// Telegram ID владельца (необязательно)
     #[allow(dead_code)]
     pub owner_id: Option<i64>,
-    /// Таймаут выполнения .eval в секундах
+    #[serde(default = "default_storage_path")]
+    pub storage_path: String,
     #[serde(default = "default_eval_timeout")]
     pub eval_timeout: u64,
-    /// Таймаут выполнения .exec в секундах
     #[serde(default = "default_exec_timeout")]
     pub exec_timeout: u64,
 }
 
-fn default_eval_timeout() -> u64 { 15 }
-fn default_exec_timeout() -> u64 { 10 }
+fn default_storage_path() -> String { "storage.json".to_owned() }
+fn default_eval_timeout() -> u64 { 30 }
+fn default_exec_timeout() -> u64 { 60 }
 
 impl Config {
     pub fn load(path: &str) -> Result<Self> {
@@ -32,7 +31,6 @@ impl Config {
             .with_context(|| "Не удалось распарсить config.toml")
     }
 
-    /// Возвращает первый символ префикса
     pub fn prefix_char(&self) -> char {
         self.prefix.chars().next().unwrap_or('.')
     }

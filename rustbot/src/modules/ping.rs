@@ -11,17 +11,19 @@ impl Module for PingModule {
 
     fn commands(&self) -> &[Command] {
         &[Command {
-            name: "ping",
+            name:        "ping",
             description: "Проверка времени отклика",
-            usage: ".ping",
+            usage:       ".ping",
         }]
     }
 
     async fn handle(&self, _cmd: &str, ctx: Context) -> Result<()> {
-        ctx.edit("🏓 Measuring...").await?;
+        ctx.edit("🏓").await?;
         let start = Instant::now();
-        ctx.edit("🏓 Pong!").await?;
-        let ms = start.elapsed().as_millis();
-        ctx.edit(format!("🏓 Pong! `{ms}ms`")).await
+        let ms = {
+            ctx.edit("🏓 ...").await?;
+            start.elapsed().as_millis()
+        };
+        ctx.edit(format!("🏓 <b>Pong!</b> <code>{ms}ms</code>")).await
     }
 }
