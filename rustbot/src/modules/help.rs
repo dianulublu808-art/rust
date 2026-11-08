@@ -43,12 +43,13 @@ impl Module for HelpModule {
                         .strip_prefix('.')
                         .map(|tail| format!("{}{tail}", ctx.command_prefix()))
                         .unwrap_or_else(|| c.usage.clone());
+                    let usage = super::esc(&usage);
                     return ctx
                         .edit(format!(
                             "📖 <b>{}</b> — <i>{}</i>\n\
                          🗂 Модуль: <code>{module}</code>\n\
                          💡 Использование: <code>{}</code>",
-                            c.name, c.description, usage,
+                            c.name, super::esc(&c.description), usage,
                         ))
                         .await;
                 }
@@ -70,7 +71,11 @@ impl Module for HelpModule {
             }
             lines.push(format!("<b>[{module}]</b>"));
             for c in cmds {
-                lines.push(format!("  <code>{p}{}</code> — {}", c.name, c.description));
+                lines.push(format!(
+                    "  <code>{p}{}</code> — {}",
+                    c.name,
+                    super::esc(&c.description)
+                ));
             }
             lines.push(String::new());
         }

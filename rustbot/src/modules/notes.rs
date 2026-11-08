@@ -39,7 +39,7 @@ impl Module for NotesModule {
 async fn cmd_save(ctx: &Context) -> Result<()> {
     let name = match ctx.args.first() {
         Some(n) => n.clone(),
-        None => return ctx.edit("❌ Использование: `.save <имя> <текст>`").await,
+        None => return ctx.edit("❌ Использование: <code>.save &lt;имя&gt; &lt;текст&gt;</code>").await,
     };
 
     // Текст: либо из аргументов, либо из ответного сообщения
@@ -69,21 +69,21 @@ async fn cmd_save(ctx: &Context) -> Result<()> {
 
     let key = format!("{PREFIX}{name}");
     ctx.storage.set(&key, &text)?;
-    ctx.edit(format!("✅ Заметка <code>{name}</code> сохранена"))
+    ctx.edit(format!("✅ Заметка <code>{}</code> сохранена", super::esc(&name)))
         .await
 }
 
 async fn cmd_get(ctx: &Context) -> Result<()> {
     let name = match ctx.args.first() {
         Some(n) => n,
-        None => return ctx.edit("❌ Использование: `.get <имя>`").await,
+        None => return ctx.edit("❌ Использование: <code>.get &lt;имя&gt;</code>").await,
     };
 
     let key = format!("{PREFIX}{name}");
     match ctx.storage.get::<String>(&key) {
-        Some(text) => ctx.edit(format!("📝 <b>{name}</b>\n{text}")).await,
+        Some(text) => ctx.edit(format!("📝 <b>{}</b>\n{}", super::esc(&name), super::esc(&text))).await,
         None => {
-            ctx.edit(format!("❌ Заметка <code>{name}</code> не найдена"))
+            ctx.edit(format!("❌ Заметка <code>{}</code> не найдена", super::esc(&name)))
                 .await
         }
     }
@@ -95,13 +95,13 @@ async fn cmd_list(ctx: &Context) -> Result<()> {
 
     if keys.is_empty() {
         return ctx
-            .edit("📭 Заметок нет. Сохрани: `.save <имя> <текст>`")
+            .edit("📭 Заметок нет. Сохрани: <code>.save &lt;имя&gt; &lt;текст&gt;</code>")
             .await;
     }
 
     let list: Vec<String> = keys
         .iter()
-        .map(|k| format!("▫️ <code>{}</code>", &k[PREFIX.len()..]))
+        .map(|k| format!("▫️ <code>{}</code>", super::esc(&k[PREFIX.len()..])))
         .collect();
 
     ctx.edit(format!(
@@ -115,17 +115,17 @@ async fn cmd_list(ctx: &Context) -> Result<()> {
 async fn cmd_del(ctx: &Context) -> Result<()> {
     let name = match ctx.args.first() {
         Some(n) => n.clone(),
-        None => return ctx.edit("❌ Использование: `.delnote <имя>`").await,
+        None => return ctx.edit("❌ Использование: <code>.delnote &lt;имя&gt;</code>").await,
     };
 
     let key = format!("{PREFIX}{name}");
     if ctx.storage.get::<String>(&key).is_none() {
         return ctx
-            .edit(format!("❌ Заметка <code>{name}</code> не найдена"))
+            .edit(format!("❌ Заметка <code>{}</code> не найдена", super::esc(&name)))
             .await;
     }
 
     ctx.storage.del(&key)?;
-    ctx.edit(format!("🗑 Заметка <code>{name}</code> удалена"))
+    ctx.edit(format!("🗑 Заметка <code>{}</code> удалена", super::esc(&name)))
         .await
 }

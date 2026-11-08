@@ -72,7 +72,7 @@ async fn info_card(ctx: &Context) -> Result<()> {
         let secs = System::uptime();
         let uptime = fmt_uptime(secs);
 
-        (os, cpu, ram_used, ram_total, uptime)
+        (super::esc(&os), super::esc(&cpu), ram_used, ram_total, uptime)
     })
     .await?;
 

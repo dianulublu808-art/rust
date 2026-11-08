@@ -27,7 +27,7 @@ impl Module for ExecModule {
 
     async fn handle(&self, _cmd: &str, ctx: Context) -> Result<()> {
         if ctx.args_raw.trim().is_empty() {
-            return ctx.edit("❌ Использование: `.exec <команда>`").await;
+            return ctx.edit("❌ Использование: <code>.exec &lt;команда&gt;</code>").await;
         }
         run_streaming(ctx).await
     }
@@ -37,7 +37,7 @@ async fn run_streaming(ctx: Context) -> Result<()> {
     let cmd = ctx.args_raw.trim().to_owned();
     let timeout_secs = super::botconfig::exec_timeout(&ctx.storage, &ctx.config);
 
-    ctx.edit(format!("⏳ <code>{}</code>", truncate(&cmd, 200)))
+    ctx.edit(format!("⏳ <code>{}</code>", super::esc(truncate(&cmd, 200))))
         .await?;
 
     let mut child = tokio::process::Command::new("bash")
@@ -115,7 +115,7 @@ async fn run_streaming(ctx: Context) -> Result<()> {
     let header = format!(
         "{icon} <code>{cmd_short}</code> — exit {status} ({ms}ms)",
         icon = icon,
-        cmd_short = truncate(&cmd, 120),
+        cmd_short = super::esc(truncate(&cmd, 120)),
         status = status,
         ms = elapsed.as_millis(),
     );
@@ -126,10 +126,10 @@ async fn run_streaming(ctx: Context) -> Result<()> {
 fn fmt_running(cmd: &str, out: &str, err: &str, elapsed: std::time::Duration) -> String {
     let body = format_output(out, err, -1);
     format!(
-        "⏳ <code>{cmd}</code> ({ms}ms)\n```\n{body}\n```",
-        cmd = truncate(cmd, 120),
+        "⏳ <code>{cmd}</code> ({ms}ms)\n<pre>{body}</pre>",
+        cmd = super::esc(truncate(cmd, 120)),
         ms = elapsed.as_millis(),
-        body = truncate_tail(&body, 3000),
+        body = super::esc(truncate_tail(&body, 3000)),
     )
 }
 

@@ -62,7 +62,7 @@ impl Module for SysinfoModule {
                     let pct = (used * 100).checked_div(total).unwrap_or(0);
                     format!(
                         "  💾 <code>{}</code> — {} / {} ({}%)",
-                        d.name().to_string_lossy(),
+                        super::esc(&d.name().to_string_lossy()),
                         fmt_bytes(used),
                         fmt_bytes(total),
                         pct,
@@ -101,7 +101,7 @@ impl Module for SysinfoModule {
                 kernel = kernel,
                 uptime = uptime,
                 now = now,
-                cpu_brand = cpu_brand,
+                cpu_brand = super::esc(&cpu_brand),
                 cpu_count = cpu_count,
                 cpu_usage = cpu_usage,
                 ram_used_fmt = ram_used_fmt,

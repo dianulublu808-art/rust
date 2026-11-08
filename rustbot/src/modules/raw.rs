@@ -70,7 +70,7 @@ async fn handle_me(ctx: &Context) -> Result<()> {
          📛 Имя: {}\n\
          🔖 Username: {}",
         me.bare_id(),
-        me.full_name(),
+        super::esc(&me.full_name()),
         uname,
     ))
     .await
@@ -92,7 +92,7 @@ async fn handle_delete(ctx: &Context) -> Result<()> {
 async fn handle_cat(ctx: &Context) -> Result<()> {
     let reply_id = match ctx.message.reply_to_message_id() {
         Some(id) => id,
-        None => return ctx.edit("❌ Ответь на сообщение командой `.cat`").await,
+        None => return ctx.edit("❌ Ответь на сообщение командой <code>.cat</code>").await,
     };
 
     let msgs = ctx
@@ -106,5 +106,5 @@ async fn handle_cat(ctx: &Context) -> Result<()> {
         .map(|m| m.text().to_owned())
         .unwrap_or_else(|| "(пусто или медиа)".to_owned());
 
-    ctx.edit(format!("📄 {text}")).await
+    ctx.edit(format!("📄 {}", super::esc(&text))).await
 }

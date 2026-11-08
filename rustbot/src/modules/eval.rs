@@ -63,7 +63,7 @@ impl Module for EvalModule {
 
         if raw.trim().is_empty() {
             return ctx
-                .edit("❌ Использование: `.eval <код>` или ответом на сообщение с кодом")
+                .edit("❌ Использование: <code>.eval &lt;код&gt;</code> или ответом на сообщение с кодом")
                 .await;
         }
 
@@ -99,7 +99,7 @@ impl Module for EvalModule {
 
         let co = match compile {
             Err(_) => return ctx.edit("⏰ Компиляция превысила лимит").await,
-            Ok(Err(e)) => return ctx.edit(format!("❌ rustc не найден: {e}")).await,
+            Ok(Err(e)) => return ctx.edit(format!("❌ rustc не найден: {}", super::esc(&e.to_string()))).await,
             Ok(Ok(o)) => o,
         };
 
@@ -124,7 +124,7 @@ impl Module for EvalModule {
 
         let ro = match run {
             Err(_) => return ctx.edit("⏰ Выполнение превысило лимит").await,
-            Ok(Err(e)) => return ctx.edit(format!("❌ Не удалось запустить: {e}")).await,
+            Ok(Err(e)) => return ctx.edit(format!("❌ Не удалось запустить: {}", super::esc(&e.to_string()))).await,
             Ok(Ok(o)) => o,
         };
 

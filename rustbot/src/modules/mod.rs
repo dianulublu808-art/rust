@@ -79,7 +79,7 @@ impl Context {
             .edit_message(
                 self.peer_ref(),
                 self.message.id(),
-                InputMessage::new().text(text.as_ref()),
+                InputMessage::new().html(text.as_ref()),
             )
             .await
             .map_err(anyhow::Error::from)
@@ -89,7 +89,7 @@ impl Context {
     #[allow(dead_code)]
     pub async fn reply(&self, text: impl AsRef<str>) -> Result<()> {
         self.client
-            .send_message(self.peer_ref(), InputMessage::new().text(text.as_ref()))
+            .send_message(self.peer_ref(), InputMessage::new().html(text.as_ref()))
             .await
             .map_err(anyhow::Error::from)?;
         Ok(())
@@ -98,8 +98,15 @@ impl Context {
     /// Редактировать, обернув вывод в code-блок.
     pub async fn edit_code(&self, header: &str, body: &str) -> Result<()> {
         let body = truncate_utf8(body, 3500);
-        self.edit(format!("{header}\n```\n{body}\n```")).await
+        self.edit(format!("{header}\n<pre>{}</pre>", esc(body))).await
     }
+}
+
+/// Экранирование текста для HTML-разметки Telegram.
+pub fn esc(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
 }
 
 fn truncate_utf8(text: &str, max_bytes: usize) -> &str {
@@ -120,4 +127,25 @@ pub trait Module: Send + Sync {
     fn name(&self) -> &str;
     fn commands(&self) -> Vec<Command>;
     async fn handle(&self, cmd: &str, ctx: Context) -> Result<()>;
+}
+
+#[cfg(test)]
+mod html_tests {
+    use super::esc;
+    use grammers_client::parsers::parse_html_message;
+
+    #[test]
+    fn html_escape_roundtrip() {
+        let body = esc("a < b && c > d\nline2");
+        let (text, entities) = parse_html_message(&format!("<b>x</b>\n<pre>{body}</pre>"));
+        assert_eq!(text, "x\na < b && c > d\nline2");
+        assert_eq!(entities.len(), 2);
+    }
+
+    #[test]
+    fn html_plain_text_untouched() {
+        let (text, entities) = parse_html_message(&esc("<script>1 & 2</script>"));
+        assert_eq!(text, "<script>1 & 2</script>");
+        assert!(entities.is_empty());
+    }
 }

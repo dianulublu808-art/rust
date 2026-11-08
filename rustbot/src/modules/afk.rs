@@ -42,7 +42,7 @@ async fn cmd_afk(ctx: &Context) -> Result<()> {
     let msg = if reason.is_empty() {
         "🌙 <b>AFK включён</b>".to_owned()
     } else {
-        format!("🌙 <b>AFK включён</b>\n💬 {reason}")
+        format!("🌙 <b>AFK включён</b>\n💬 {}", super::esc(&reason))
     };
     ctx.edit(msg).await
 }

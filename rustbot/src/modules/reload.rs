@@ -72,7 +72,7 @@ impl ReloadModule {
             Ok(p) => p,
             Err(e) => {
                 return ctx
-                    .edit(format!("❌ Ошибка загрузки плагинов:\n<code>{e:#}</code>"))
+                    .edit(format!("❌ Ошибка загрузки плагинов:\n<code>{}</code>", super::esc(&format!("{e:#}"))))
                     .await;
             }
         };
@@ -93,7 +93,8 @@ impl ReloadModule {
         if let Err(e) = result {
             return ctx
                 .edit(format!(
-                    "❌ Конфликт команд, старые плагины оставлены:\n<code>{e:#}</code>"
+                    "❌ Конфликт команд, старые плагины оставлены:\n<code>{}</code>",
+                    super::esc(&format!("{e:#}"))
                 ))
                 .await;
         }

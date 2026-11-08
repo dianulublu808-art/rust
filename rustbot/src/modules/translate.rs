@@ -29,7 +29,7 @@ async fn cmd_translate(ctx: &Context) -> Result<()> {
 
     if text.trim().is_empty() {
         return ctx
-            .edit("❌ Использование: `.tr ru текст` или ответом на сообщение")
+            .edit("❌ Использование: <code>.tr ru текст</code> или ответом на сообщение")
             .await;
     }
 
@@ -39,7 +39,7 @@ async fn cmd_translate(ctx: &Context) -> Result<()> {
         .await
         .with_context(|| "Ошибка перевода")?;
 
-    ctx.edit(format!("🌐 <b>Перевод → {lang}</b>\n{translated}"))
+    ctx.edit(format!("🌐 <b>Перевод → {lang}</b>\n{}", super::esc(&translated)))
         .await
 }
 
