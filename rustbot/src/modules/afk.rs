@@ -7,39 +7,37 @@ pub struct AfkModule;
 
 #[async_trait]
 impl Module for AfkModule {
-    fn name(&self) -> &'static str { "afk" }
+    fn name(&self) -> &str {
+        "afk"
+    }
 
-    fn commands(&self) -> &[Command] {
-        &[
-            Command {
-                name:        "afk",
-                description: "Уйти в AFK. При упоминании автоматически ответит",
-                usage:       ".afk [причина]",
-            },
-            Command {
-                name:        "unafk",
-                description: "Вернуться из AFK",
-                usage:       ".unafk",
-            },
+    fn commands(&self) -> Vec<Command> {
+        vec![
+            Command::new(
+                "afk",
+                "Уйти в AFK. При упоминании автоматически ответит",
+                ".afk [причина]",
+            ),
+            Command::new("unafk", "Вернуться из AFK", ".unafk"),
         ]
     }
 
     async fn handle(&self, cmd: &str, ctx: Context) -> Result<()> {
         match cmd {
-            "afk"   => cmd_afk(&ctx).await,
+            "afk" => cmd_afk(&ctx).await,
             "unafk" => cmd_unafk(&ctx).await,
-            _       => Ok(()),
+            _ => Ok(()),
         }
     }
 }
 
 async fn cmd_afk(ctx: &Context) -> Result<()> {
     let reason = ctx.args_raw.trim().to_owned();
-    let now    = Utc::now().timestamp();
+    let now = Utc::now().timestamp();
 
     ctx.storage.set("afk.active", true)?;
     ctx.storage.set("afk.reason", &reason)?;
-    ctx.storage.set("afk.since",  now)?;
+    ctx.storage.set("afk.since", now)?;
 
     let msg = if reason.is_empty() {
         "🌙 <b>AFK включён</b>".to_owned()
@@ -80,7 +78,11 @@ fn fmt_duration(secs: u64) -> String {
     let h = secs / 3600;
     let m = (secs % 3600) / 60;
     let s = secs % 60;
-    if h > 0   { format!("{h}ч {m}м") }
-    else if m > 0 { format!("{m}м {s}с") }
-    else          { format!("{s}с") }
+    if h > 0 {
+        format!("{h}ч {m}м")
+    } else if m > 0 {
+        format!("{m}м {s}с")
+    } else {
+        format!("{s}с")
+    }
 }

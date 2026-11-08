@@ -26,6 +26,10 @@ sysinfo          = "0.30"
 tempfile         = "3"
 chrono           = { version = "0.4", features = ["serde"] }
 reqwest          = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+wasmi            = "0.40"
+
+[dev-dependencies]
+wat = "1"
 
 [patch.crates-io]
 core2 = { git = "https://github.com/technocreatives/core2" }

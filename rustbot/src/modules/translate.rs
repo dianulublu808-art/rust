@@ -6,14 +6,16 @@ pub struct TranslateModule;
 
 #[async_trait]
 impl Module for TranslateModule {
-    fn name(&self) -> &'static str { "translate" }
+    fn name(&self) -> &str {
+        "translate"
+    }
 
-    fn commands(&self) -> &[Command] {
-        &[Command {
-            name:        "tr",
-            description: "Перевести текст. .tr ru <текст> или ответом",
-            usage:       ".tr [lang] [текст]",
-        }]
+    fn commands(&self) -> Vec<Command> {
+        vec![Command::new(
+            "tr",
+            "Перевести текст. .tr ru <текст> или ответом",
+            ".tr [lang] [текст]",
+        )]
     }
 
     async fn handle(&self, _cmd: &str, ctx: Context) -> Result<()> {
@@ -33,12 +35,12 @@ async fn cmd_translate(ctx: &Context) -> Result<()> {
 
     ctx.edit("🌐 Перевожу...").await?;
 
-    let translated = translate_text(&text, &lang).await
+    let translated = translate_text(&text, &lang)
+        .await
         .with_context(|| "Ошибка перевода")?;
 
-    ctx.edit(format!(
-        "🌐 <b>Перевод → {lang}</b>\n{translated}"
-    )).await
+    ctx.edit(format!("🌐 <b>Перевод → {lang}</b>\n{translated}"))
+        .await
 }
 
 async fn parse_args(ctx: &Context) -> Result<(String, String)> {
@@ -53,12 +55,11 @@ async fn parse_args(ctx: &Context) -> Result<(String, String)> {
     let first = &ctx.args[0];
 
     // Определяем, является ли первый аргумент языком (2 буквы или xx|yy)
-    let is_lang = first.len() == 2
-        || (first.len() == 5 && first.chars().nth(2) == Some('|'));
+    let is_lang = first.len() == 2 || (first.len() == 5 && first.chars().nth(2) == Some('|'));
 
     if is_lang {
-        let lang  = parse_lang(first);
-        let rest  = ctx.args[1..].join(" ");
+        let lang = parse_lang(first);
+        let rest = ctx.args[1..].join(" ");
         let text = if rest.trim().is_empty() {
             get_reply_text(ctx).await?
         } else {
@@ -88,8 +89,14 @@ fn parse_lang(s: &str) -> String {
 async fn get_reply_text(ctx: &Context) -> Result<String> {
     match ctx.message.reply_to_message_id() {
         Some(rid) => {
-            let msgs = ctx.client.get_messages_by_id(ctx.peer_ref(), &[rid]).await?;
-            Ok(msgs.into_iter().flatten().next()
+            let msgs = ctx
+                .client
+                .get_messages_by_id(ctx.peer_ref(), &[rid])
+                .await?;
+            Ok(msgs
+                .into_iter()
+                .flatten()
+                .next()
                 .map(|m| m.text().to_owned())
                 .unwrap_or_default())
         }
@@ -107,7 +114,7 @@ async fn translate_text(text: &str, target: &str) -> Result<String> {
         "https://translate.googleapis.com/translate_a/single\
          ?client=gtx&sl=auto&tl={target}&dt=t&q={q}",
         target = urlencoding(target),
-        q      = urlencoding(text),
+        q = urlencoding(text),
     );
 
     let resp: serde_json::Value = client
@@ -142,7 +149,8 @@ fn urlencoding(s: &str) -> String {
                 vec![c]
             } else {
                 let mut bytes = [0u8; 4];
-                let encoded: String = c.encode_utf8(&mut bytes)
+                let encoded: String = c
+                    .encode_utf8(&mut bytes)
                     .bytes()
                     .map(|b| format!("%{b:02X}"))
                     .collect::<Vec<_>>()

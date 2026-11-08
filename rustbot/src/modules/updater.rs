@@ -9,28 +9,26 @@ pub struct UpdaterModule;
 
 #[async_trait]
 impl Module for UpdaterModule {
-    fn name(&self) -> &'static str { "updater" }
+    fn name(&self) -> &str {
+        "updater"
+    }
 
-    fn commands(&self) -> &[Command] {
-        &[
-            Command {
-                name:        "update",
-                description: "Скачать обновления из git и пересобрать бота",
-                usage:       ".update",
-            },
-            Command {
-                name:        "restart",
-                description: "Перезапустить бота",
-                usage:       ".restart",
-            },
+    fn commands(&self) -> Vec<Command> {
+        vec![
+            Command::new(
+                "update",
+                "Скачать обновления из git и пересобрать бота",
+                ".update",
+            ),
+            Command::new("restart", "Перезапустить бота", ".restart"),
         ]
     }
 
     async fn handle(&self, cmd: &str, ctx: Context) -> Result<()> {
         match cmd {
-            "update"  => cmd_update(&ctx).await,
+            "update" => cmd_update(&ctx).await,
             "restart" => cmd_restart(&ctx).await,
-            _         => Ok(()),
+            _ => Ok(()),
         }
     }
 }
@@ -62,7 +60,11 @@ async fn run_cmd(args: &[&str], cwd: &PathBuf) -> Result<(bool, String)> {
 
     let stdout = String::from_utf8_lossy(&out.stdout).to_string();
     let stderr = String::from_utf8_lossy(&out.stderr).to_string();
-    let combined = if stderr.is_empty() { stdout } else { format!("{stdout}{stderr}") };
+    let combined = if stderr.is_empty() {
+        stdout
+    } else {
+        format!("{stdout}{stderr}")
+    };
     Ok((out.status.success(), combined))
 }
 
@@ -71,9 +73,13 @@ async fn run_cmd(args: &[&str], cwd: &PathBuf) -> Result<(bool, String)> {
 async fn cmd_update(ctx: &Context) -> Result<()> {
     let repo = match repo_dir() {
         Some(d) => d,
-        None    => {
-            return ctx.edit("❌ Не удалось определить директорию репозитория.\n\
-                              Убедись, что запускаешь собранный бинарник из `target/release/`").await;
+        None => {
+            return ctx
+                .edit(
+                    "❌ Не удалось определить директорию репозитория.\n\
+                              Убедись, что запускаешь собранный бинарник из `target/release/`",
+                )
+                .await;
         }
     };
 
@@ -84,19 +90,21 @@ async fn cmd_update(ctx: &Context) -> Result<()> {
     let (ok, out) = run_cmd(&["git", "pull", "origin", "rustbot"], &repo).await?;
     if !ok {
         let snippet = &out[..out.len().min(1000)];
-        return ctx.edit_code("❌ git pull завершился с ошибкой:", snippet).await;
+        return ctx
+            .edit_code("❌ git pull завершился с ошибкой:", snippet)
+            .await;
     }
 
     if out.contains("Already up to date") || out.contains("уже обновлён") {
-        return ctx.edit("✅ <b>Уже актуальная версия</b>, обновлений нет.").await;
+        return ctx
+            .edit("✅ <b>Уже актуальная версия</b>, обновлений нет.")
+            .await;
     }
 
     // 2. cargo build --release
-    ctx.edit("🔨 <b>Шаг 2/3:</b> Сборка (может занять несколько минут)...").await?;
-    let (ok, out) = run_cmd(
-        &["cargo", "build", "--release"],
-        &rustbot,
-    ).await?;
+    ctx.edit("🔨 <b>Шаг 2/3:</b> Сборка (может занять несколько минут)...")
+        .await?;
+    let (ok, out) = run_cmd(&["cargo", "build", "--release"], &rustbot).await?;
 
     if !ok {
         let snippet = &out[..out.len().min(2000)];
@@ -104,7 +112,8 @@ async fn cmd_update(ctx: &Context) -> Result<()> {
     }
 
     // 3. Restart
-    ctx.edit("✅ <b>Шаг 3/3:</b> Собрано! Перезапускаю...").await?;
+    ctx.edit("✅ <b>Шаг 3/3:</b> Собрано! Перезапускаю...")
+        .await?;
     do_restart();
 }
 
@@ -116,9 +125,7 @@ async fn cmd_restart(ctx: &Context) -> Result<()> {
 fn do_restart() -> ! {
     use std::os::unix::process::CommandExt;
     let args: Vec<String> = std::env::args().collect();
-    let err = std::process::Command::new(&args[0])
-        .args(&args[1..])
-        .exec();
+    let err = std::process::Command::new(&args[0]).args(&args[1..]).exec();
     // exec() никогда не возвращается, если успешен
     eprintln!("exec failed: {err}");
     std::process::exit(1);

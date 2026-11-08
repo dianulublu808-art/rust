@@ -3,6 +3,7 @@ api_hash     = "your_api_hash_here"
 phone        = "+79991234567"
 session_path = "rustbot.session"
 storage_path = "storage.json"
+plugin_dir   = "plugins"
 prefix       = "."
 owner_id     = 123456789
 

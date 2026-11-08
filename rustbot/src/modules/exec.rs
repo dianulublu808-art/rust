@@ -7,20 +7,22 @@ use std::sync::Arc;
 use std::time::Instant;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::sync::Mutex;
-use tokio::time::{Duration, interval};
+use tokio::time::{interval, Duration};
 
 pub struct ExecModule;
 
 #[async_trait]
 impl Module for ExecModule {
-    fn name(&self) -> &'static str { "exec" }
+    fn name(&self) -> &str {
+        "exec"
+    }
 
-    fn commands(&self) -> &[Command] {
-        &[Command {
-            name:        "exec",
-            description: "Выполнить команду в shell (с потоковым выводом)",
-            usage:       ".exec <команда>",
-        }]
+    fn commands(&self) -> Vec<Command> {
+        vec![Command::new(
+            "exec",
+            "Выполнить команду в shell (с потоковым выводом)",
+            ".exec <команда>",
+        )]
     }
 
     async fn handle(&self, _cmd: &str, ctx: Context) -> Result<()> {
@@ -35,7 +37,8 @@ async fn run_streaming(ctx: Context) -> Result<()> {
     let cmd = ctx.args_raw.trim().to_owned();
     let timeout_secs = ctx.config.exec_timeout;
 
-    ctx.edit(format!("⏳ <code>{}</code>", truncate(&cmd, 200))).await?;
+    ctx.edit(format!("⏳ <code>{}</code>", truncate(&cmd, 200)))
+        .await?;
 
     let mut child = tokio::process::Command::new("bash")
         .arg("-c")
@@ -70,8 +73,8 @@ async fn run_streaming(ctx: Context) -> Result<()> {
         }
     });
 
-    let start       = Instant::now();
-    let mut ticker  = interval(Duration::from_secs(2));
+    let start = Instant::now();
+    let mut ticker = interval(Duration::from_secs(2));
     ticker.tick().await; // пропускаем первый мгновенный тик
 
     let status = loop {
@@ -107,14 +110,14 @@ async fn run_streaming(ctx: Context) -> Result<()> {
     let err = err_buf.lock().await.clone();
     let elapsed = start.elapsed();
 
-    let body  = format_output(&out, &err, status);
-    let icon  = if status == 0 { "✅" } else { "⚠️" };
+    let body = format_output(&out, &err, status);
+    let icon = if status == 0 { "✅" } else { "⚠️" };
     let header = format!(
         "{icon} <code>{cmd_short}</code> — exit {status} ({ms}ms)",
-        icon     = icon,
+        icon = icon,
         cmd_short = truncate(&cmd, 120),
-        status   = status,
-        ms       = elapsed.as_millis(),
+        status = status,
+        ms = elapsed.as_millis(),
     );
 
     ctx.edit_code(&header, &body).await
@@ -124,17 +127,17 @@ fn fmt_running(cmd: &str, out: &str, err: &str, elapsed: std::time::Duration) ->
     let body = format_output(out, err, -1);
     format!(
         "⏳ <code>{cmd}</code> ({ms}ms)\n```\n{body}\n```",
-        cmd  = truncate(cmd, 120),
-        ms   = elapsed.as_millis(),
+        cmd = truncate(cmd, 120),
+        ms = elapsed.as_millis(),
         body = truncate_tail(&body, 3000),
     )
 }
 
 fn format_output(out: &str, err: &str, _code: i32) -> String {
     match (out.trim().is_empty(), err.trim().is_empty()) {
-        (true,  true)  => "(нет вывода)".to_owned(),
-        (false, true)  => truncate_tail(out.trim_end(), 3500).to_owned(),
-        (true,  false) => format!("stderr:\n{}", truncate_tail(err.trim_end(), 3500)),
+        (true, true) => "(нет вывода)".to_owned(),
+        (false, true) => truncate_tail(out.trim_end(), 3500).to_owned(),
+        (true, false) => format!("stderr:\n{}", truncate_tail(err.trim_end(), 3500)),
         (false, false) => format!(
             "{}\nstderr:\n{}",
             truncate_tail(out.trim_end(), 2000),
@@ -145,16 +148,24 @@ fn format_output(out: &str, err: &str, _code: i32) -> String {
 
 fn truncate(s: &str, max: usize) -> &str {
     let s = s.trim_end();
-    if s.len() <= max { return s; }
+    if s.len() <= max {
+        return s;
+    }
     let mut i = max;
-    while !s.is_char_boundary(i) { i -= 1; }
+    while !s.is_char_boundary(i) {
+        i -= 1;
+    }
     &s[..i]
 }
 
 fn truncate_tail(s: &str, max: usize) -> &str {
-    if s.len() <= max { return s; }
+    if s.len() <= max {
+        return s;
+    }
     let start = s.len() - max;
     let mut i = start;
-    while !s.is_char_boundary(i) { i += 1; }
+    while !s.is_char_boundary(i) {
+        i += 1;
+    }
     &s[i..]
 }

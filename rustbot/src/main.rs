@@ -3,6 +3,7 @@ mod config;
 mod dispatcher;
 mod error;
 mod modules;
+mod plugins;
 mod storage;
 
 use anyhow::Result;

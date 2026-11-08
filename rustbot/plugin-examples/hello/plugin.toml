@@ -1,0 +1,7 @@
+name = "hello"
+wasm = "hello.wasm"
+
+[[commands]]
+name = "hello"
+description = "Пример команды из WASM-плагина"
+usage = ".hello [имя]"

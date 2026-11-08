@@ -1,7 +1,7 @@
 use crate::{config::Config, storage::Storage};
 use anyhow::Result;
 use async_trait::async_trait;
-use grammers_client::{Client, InputMessage, types::update::Message};
+use grammers_client::{types::update::Message, Client, InputMessage};
 use grammers_session::PeerRef;
 use std::sync::Arc;
 
@@ -21,27 +21,41 @@ pub mod updater;
 
 #[derive(Debug, Clone)]
 pub struct Command {
-    pub name:        &'static str,
-    pub description: &'static str,
-    pub usage:       &'static str,
+    pub name: String,
+    pub description: String,
+    pub usage: String,
+}
+
+impl Command {
+    pub fn new(
+        name: impl Into<String>,
+        description: impl Into<String>,
+        usage: impl Into<String>,
+    ) -> Self {
+        Self {
+            name: name.into(),
+            description: description.into(),
+            usage: usage.into(),
+        }
+    }
 }
 
 // ── Контекст ─────────────────────────────────────────────────────────────────
 
 pub struct Context {
-    pub client:   Client,
-    pub message:  Message,
-    pub args:     Vec<String>,
+    pub client: Client,
+    pub message: Message,
+    pub args: Vec<String>,
     pub args_raw: String,
-    pub config:   Arc<Config>,
-    pub storage:  Arc<Storage>,
+    pub config: Arc<Config>,
+    pub storage: Arc<Storage>,
 }
 
 impl Context {
     pub fn peer_ref(&self) -> PeerRef {
         match self.message.chat() {
             Ok(chat) => PeerRef::from(chat),
-            Err(pr)  => pr,
+            Err(pr) => pr,
         }
     }
 
@@ -69,16 +83,27 @@ impl Context {
 
     /// Редактировать, обернув вывод в code-блок.
     pub async fn edit_code(&self, header: &str, body: &str) -> Result<()> {
-        let body = if body.len() > 3500 { &body[..3500] } else { body };
+        let body = truncate_utf8(body, 3500);
         self.edit(format!("{header}\n```\n{body}\n```")).await
     }
+}
+
+fn truncate_utf8(text: &str, max_bytes: usize) -> &str {
+    if text.len() <= max_bytes {
+        return text;
+    }
+    let mut end = max_bytes;
+    while !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    &text[..end]
 }
 
 // ── Трейт модуля ─────────────────────────────────────────────────────────────
 
 #[async_trait]
 pub trait Module: Send + Sync {
-    fn name(&self)              -> &'static str;
-    fn commands(&self)          -> &[Command];
+    fn name(&self) -> &str;
+    fn commands(&self) -> Vec<Command>;
     async fn handle(&self, cmd: &str, ctx: Context) -> Result<()>;
 }

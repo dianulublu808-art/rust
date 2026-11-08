@@ -30,7 +30,8 @@ impl Storage {
 
     pub fn get<T: for<'de> Deserialize<'de>>(&self, key: &str) -> Option<T> {
         let g = self.inner.read().ok()?;
-        g.get(key).and_then(|v| serde_json::from_value(v.clone()).ok())
+        g.get(key)
+            .and_then(|v| serde_json::from_value(v.clone()).ok())
     }
 
     pub fn set<T: Serialize>(&self, key: &str, value: T) -> Result<()> {
@@ -52,7 +53,10 @@ impl Storage {
 
     pub fn keys_with_prefix(&self, prefix: &str) -> Vec<String> {
         let g = self.inner.read().unwrap_or_else(|e| e.into_inner());
-        g.keys().filter(|k| k.starts_with(prefix)).cloned().collect()
+        g.keys()
+            .filter(|k| k.starts_with(prefix))
+            .cloned()
+            .collect()
     }
 
     fn flush(&self) -> Result<()> {

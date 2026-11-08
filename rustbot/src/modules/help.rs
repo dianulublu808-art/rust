@@ -11,7 +11,7 @@ impl HelpModule {
     pub fn new(modules: &[Arc<dyn Module>]) -> Self {
         let entries = modules
             .iter()
-            .map(|m| (m.name().to_owned(), m.commands().to_vec()))
+            .map(|m| (m.name().to_owned(), m.commands()))
             .collect();
         Self { entries }
     }
@@ -19,14 +19,16 @@ impl HelpModule {
 
 #[async_trait]
 impl Module for HelpModule {
-    fn name(&self) -> &'static str { "help" }
+    fn name(&self) -> &str {
+        "help"
+    }
 
-    fn commands(&self) -> &[Command] {
-        &[Command {
-            name:        "help",
-            description: "Список всех команд или справка по команде",
-            usage:       ".help [команда]",
-        }]
+    fn commands(&self) -> Vec<Command> {
+        vec![Command::new(
+            "help",
+            "Список всех команд или справка по команде",
+            ".help [команда]",
+        )]
     }
 
     async fn handle(&self, _cmd: &str, ctx: Context) -> Result<()> {
@@ -34,15 +36,19 @@ impl Module for HelpModule {
             // .help <команда>
             for (module, cmds) in &self.entries {
                 if let Some(c) = cmds.iter().find(|c| c.name.eq_ignore_ascii_case(target)) {
-                    return ctx.edit(format!(
-                        "📖 <b>{}</b> — <i>{}</i>\n\
+                    return ctx
+                        .edit(format!(
+                            "📖 <b>{}</b> — <i>{}</i>\n\
                          🗂 Модуль: <code>{module}</code>\n\
                          💡 Использование: <code>{}</code>",
-                        c.name, c.description, c.usage,
-                    )).await;
+                            c.name, c.description, c.usage,
+                        ))
+                        .await;
                 }
             }
-            return ctx.edit(format!("❌ Команда <code>{target}</code> не найдена")).await;
+            return ctx
+                .edit(format!("❌ Команда <code>{target}</code> не найдена"))
+                .await;
         }
 
         // .help — полный список
@@ -52,7 +58,9 @@ impl Module for HelpModule {
         )];
 
         for (module, cmds) in &self.entries {
-            if cmds.is_empty() { continue; }
+            if cmds.is_empty() {
+                continue;
+            }
             lines.push(format!("<b>[{module}]</b>"));
             for c in cmds {
                 lines.push(format!("  <code>{p}{}</code> — {}", c.name, c.description));

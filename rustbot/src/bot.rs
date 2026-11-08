@@ -2,18 +2,9 @@ use crate::{
     config::Config,
     dispatcher::Dispatcher,
     modules::{
-        afk::AfkModule,
-        eval::EvalModule,
-        exec::ExecModule,
-        help::HelpModule,
-        info::InfoModule,
-        notes::NotesModule,
-        ping::PingModule,
-        raw::RawModule,
-        sysinfo::SysinfoModule,
-        translate::TranslateModule,
-        updater::UpdaterModule,
-        Module,
+        afk::AfkModule, eval::EvalModule, exec::ExecModule, help::HelpModule, info::InfoModule,
+        notes::NotesModule, ping::PingModule, raw::RawModule, sysinfo::SysinfoModule,
+        translate::TranslateModule, updater::UpdaterModule, Module,
     },
     storage::Storage,
 };
@@ -40,7 +31,11 @@ pub async fn run(config: Arc<Config>) -> Result<()> {
 
     let pool = SenderPool::new(Arc::clone(&session), config.api_id);
     let client = Client::new(&pool);
-    let SenderPool { runner, updates, handle } = pool;
+    let SenderPool {
+        runner,
+        updates,
+        handle,
+    } = pool;
     let pool_task = tokio::spawn(runner.run());
 
     if !client.is_authorized().await? {
@@ -54,18 +49,14 @@ pub async fn run(config: Arc<Config>) -> Result<()> {
     let me = client.get_me().await?;
     let me_id = me.bare_id();
     let me_username = me.username().map(str::to_owned);
-    info!(
-        "Авторизован как: {} (id={})",
-        me.full_name(),
-        me_id
-    );
+    info!("Авторизован как: {} (id={})", me.full_name(), me_id);
 
     let dispatcher = Arc::new(build_dispatcher(
         Arc::clone(&config),
         Arc::clone(&storage),
         me_id,
         me_username,
-    ));
+    )?);
 
     let mut update_stream = client.stream_updates(
         updates,
@@ -98,8 +89,8 @@ fn build_dispatcher(
     storage: Arc<Storage>,
     me_id: i64,
     me_username: Option<String>,
-) -> Dispatcher {
-    let base_modules: Vec<Arc<dyn Module>> = vec![
+) -> Result<Dispatcher> {
+    let mut base_modules: Vec<Arc<dyn Module>> = vec![
         Arc::new(PingModule),
         Arc::new(InfoModule),
         Arc::new(SysinfoModule),
@@ -111,6 +102,8 @@ fn build_dispatcher(
         Arc::new(TranslateModule),
         Arc::new(UpdaterModule),
     ];
+
+    base_modules.extend(crate::plugins::load_plugins(&config.plugin_dir)?);
 
     let help = Arc::new(HelpModule::new(&base_modules));
     let mut all = base_modules;

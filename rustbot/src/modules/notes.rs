@@ -8,40 +8,30 @@ const PREFIX: &str = "note.";
 
 #[async_trait]
 impl Module for NotesModule {
-    fn name(&self) -> &'static str { "notes" }
+    fn name(&self) -> &str {
+        "notes"
+    }
 
-    fn commands(&self) -> &[Command] {
-        &[
-            Command {
-                name:        "save",
-                description: "Сохранить заметку: .save <имя> <текст> (или в ответ)",
-                usage:       ".save <имя> [текст]",
-            },
-            Command {
-                name:        "get",
-                description: "Получить заметку",
-                usage:       ".get <имя>",
-            },
-            Command {
-                name:        "notes",
-                description: "Список всех заметок",
-                usage:       ".notes",
-            },
-            Command {
-                name:        "delnote",
-                description: "Удалить заметку",
-                usage:       ".delnote <имя>",
-            },
+    fn commands(&self) -> Vec<Command> {
+        vec![
+            Command::new(
+                "save",
+                "Сохранить заметку: .save <имя> <текст> (или в ответ)",
+                ".save <имя> [текст]",
+            ),
+            Command::new("get", "Получить заметку", ".get <имя>"),
+            Command::new("notes", "Список всех заметок", ".notes"),
+            Command::new("delnote", "Удалить заметку", ".delnote <имя>"),
         ]
     }
 
     async fn handle(&self, cmd: &str, ctx: Context) -> Result<()> {
         match cmd {
-            "save"    => cmd_save(&ctx).await,
-            "get"     => cmd_get(&ctx).await,
-            "notes"   => cmd_list(&ctx).await,
+            "save" => cmd_save(&ctx).await,
+            "get" => cmd_get(&ctx).await,
+            "notes" => cmd_list(&ctx).await,
             "delnote" => cmd_del(&ctx).await,
-            _         => Ok(()),
+            _ => Ok(()),
         }
     }
 }
@@ -49,7 +39,7 @@ impl Module for NotesModule {
 async fn cmd_save(ctx: &Context) -> Result<()> {
     let name = match ctx.args.first() {
         Some(n) => n.clone(),
-        None    => return ctx.edit("❌ Использование: `.save <имя> <текст>`").await,
+        None => return ctx.edit("❌ Использование: `.save <имя> <текст>`").await,
     };
 
     // Текст: либо из аргументов, либо из ответного сообщения
@@ -59,8 +49,13 @@ async fn cmd_save(ctx: &Context) -> Result<()> {
         // Пробуем получить текст ответа
         match ctx.message.reply_to_message_id() {
             Some(rid) => {
-                let msgs = ctx.client.get_messages_by_id(ctx.peer_ref(), &[rid]).await?;
-                msgs.into_iter().flatten().next()
+                let msgs = ctx
+                    .client
+                    .get_messages_by_id(ctx.peer_ref(), &[rid])
+                    .await?;
+                msgs.into_iter()
+                    .flatten()
+                    .next()
                     .map(|m| m.text().to_owned())
                     .unwrap_or_default()
             }
@@ -74,19 +69,23 @@ async fn cmd_save(ctx: &Context) -> Result<()> {
 
     let key = format!("{PREFIX}{name}");
     ctx.storage.set(&key, &text)?;
-    ctx.edit(format!("✅ Заметка <code>{name}</code> сохранена")).await
+    ctx.edit(format!("✅ Заметка <code>{name}</code> сохранена"))
+        .await
 }
 
 async fn cmd_get(ctx: &Context) -> Result<()> {
     let name = match ctx.args.first() {
         Some(n) => n,
-        None    => return ctx.edit("❌ Использование: `.get <имя>`").await,
+        None => return ctx.edit("❌ Использование: `.get <имя>`").await,
     };
 
     let key = format!("{PREFIX}{name}");
     match ctx.storage.get::<String>(&key) {
         Some(text) => ctx.edit(format!("📝 <b>{name}</b>\n{text}")).await,
-        None       => ctx.edit(format!("❌ Заметка <code>{name}</code> не найдена")).await,
+        None => {
+            ctx.edit(format!("❌ Заметка <code>{name}</code> не найдена"))
+                .await
+        }
     }
 }
 
@@ -95,10 +94,13 @@ async fn cmd_list(ctx: &Context) -> Result<()> {
     keys.sort();
 
     if keys.is_empty() {
-        return ctx.edit("📭 Заметок нет. Сохрани: `.save <имя> <текст>`").await;
+        return ctx
+            .edit("📭 Заметок нет. Сохрани: `.save <имя> <текст>`")
+            .await;
     }
 
-    let list: Vec<String> = keys.iter()
+    let list: Vec<String> = keys
+        .iter()
         .map(|k| format!("▫️ <code>{}</code>", &k[PREFIX.len()..]))
         .collect();
 
@@ -106,20 +108,24 @@ async fn cmd_list(ctx: &Context) -> Result<()> {
         "📚 <b>Заметки</b> ({}):\n{}",
         keys.len(),
         list.join("\n")
-    )).await
+    ))
+    .await
 }
 
 async fn cmd_del(ctx: &Context) -> Result<()> {
     let name = match ctx.args.first() {
         Some(n) => n.clone(),
-        None    => return ctx.edit("❌ Использование: `.delnote <имя>`").await,
+        None => return ctx.edit("❌ Использование: `.delnote <имя>`").await,
     };
 
     let key = format!("{PREFIX}{name}");
     if ctx.storage.get::<String>(&key).is_none() {
-        return ctx.edit(format!("❌ Заметка <code>{name}</code> не найдена")).await;
+        return ctx
+            .edit(format!("❌ Заметка <code>{name}</code> не найдена"))
+            .await;
     }
 
     ctx.storage.del(&key)?;
-    ctx.edit(format!("🗑 Заметка <code>{name}</code> удалена")).await
+    ctx.edit(format!("🗑 Заметка <code>{name}</code> удалена"))
+        .await
 }

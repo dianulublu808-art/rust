@@ -13,22 +13,32 @@ pub struct Config {
     pub owner_id: Option<i64>,
     #[serde(default = "default_storage_path")]
     pub storage_path: String,
+    #[serde(default = "default_plugin_dir")]
+    pub plugin_dir: String,
     #[serde(default = "default_eval_timeout")]
     pub eval_timeout: u64,
     #[serde(default = "default_exec_timeout")]
     pub exec_timeout: u64,
 }
 
-fn default_storage_path() -> String { "storage.json".to_owned() }
-fn default_eval_timeout() -> u64 { 30 }
-fn default_exec_timeout() -> u64 { 60 }
+fn default_storage_path() -> String {
+    "storage.json".to_owned()
+}
+fn default_plugin_dir() -> String {
+    "plugins".to_owned()
+}
+fn default_eval_timeout() -> u64 {
+    30
+}
+fn default_exec_timeout() -> u64 {
+    60
+}
 
 impl Config {
     pub fn load(path: &str) -> Result<Self> {
         let content = fs::read_to_string(path)
             .with_context(|| format!("Не удалось прочитать конфиг '{path}'"))?;
-        toml::from_str(&content)
-            .with_context(|| "Не удалось распарсить config.toml")
+        toml::from_str(&content).with_context(|| "Не удалось распарсить config.toml")
     }
 
     pub fn prefix_char(&self) -> char {

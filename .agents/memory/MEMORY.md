@@ -1,0 +1,1 @@
+- [RustBot extension architecture](rustbot-wasm-plugins.md) — use Rust-built WASM plugins; do not bring Python back into the runtime.

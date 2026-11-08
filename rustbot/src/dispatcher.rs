@@ -3,18 +3,19 @@ use crate::{
     modules::{Context, Module},
     storage::Storage,
 };
-use anyhow::Result;
-use grammers_client::{Client, InputMessage, Update, types::update::Message};
+use anyhow::{bail, Result};
+use grammers_client::{types::update::Message, Client, InputMessage, Update};
 use grammers_session::PeerRef;
+use std::collections::HashMap;
 use std::sync::Arc;
 use tracing::{debug, error, warn};
 
 pub struct Dispatcher {
-    modules:      Vec<Arc<dyn Module>>,
-    config:       Arc<Config>,
-    storage:      Arc<Storage>,
-    me_id:        i64,
-    me_username:  Option<String>,
+    modules: Vec<Arc<dyn Module>>,
+    config: Arc<Config>,
+    storage: Arc<Storage>,
+    me_id: i64,
+    me_username: Option<String>,
 }
 
 impl Dispatcher {
@@ -24,13 +25,29 @@ impl Dispatcher {
         me_id: i64,
         me_username: Option<String>,
         modules: Vec<Arc<dyn Module>>,
-    ) -> Self {
+    ) -> Result<Self> {
+        let mut command_owners = HashMap::new();
         for m in &modules {
             for c in m.commands() {
+                let key = c.name.to_ascii_lowercase();
+                if let Some(previous) = command_owners.insert(key.clone(), m.name().to_owned()) {
+                    bail!(
+                        "command '{}' is registered by both '{}' and '{}'",
+                        key,
+                        previous,
+                        m.name()
+                    );
+                }
                 debug!("cmd '{}' ← {}", c.name, m.name());
             }
         }
-        Self { modules, config, storage, me_id, me_username }
+        Ok(Self {
+            modules,
+            config,
+            storage,
+            me_id,
+            me_username,
+        })
     }
 
     pub async fn handle(&self, client: Client, update: Update) -> Result<()> {
@@ -56,7 +73,9 @@ impl Dispatcher {
 
     async fn try_afk_reply(&self, client: &Client, msg: &Message) {
         let active = self.storage.get::<bool>("afk.active").unwrap_or(false);
-        if !active { return; }
+        if !active {
+            return;
+        }
 
         let text = msg.text();
 
@@ -67,18 +86,22 @@ impl Dispatcher {
         };
         let is_reply_to_me = self.msg_is_reply_to_me(msg);
 
-        if !mentions && !is_reply_to_me { return; }
+        if !mentions && !is_reply_to_me {
+            return;
+        }
 
         // Не отвечать самому себе
         if let Some(s) = msg.sender() {
             use grammers_client::types::Chat;
             if let Chat::User(u) = s {
-                if u.bare_id() == self.me_id { return; }
+                if u.bare_id() == self.me_id {
+                    return;
+                }
             }
         }
 
         let reason = self.storage.get::<String>("afk.reason").unwrap_or_default();
-        let since  = self.storage.get::<i64>("afk.since").unwrap_or(0);
+        let since = self.storage.get::<i64>("afk.since").unwrap_or(0);
 
         let since_str = if since > 0 {
             chrono::DateTime::from_timestamp(since, 0)
@@ -96,7 +119,7 @@ impl Dispatcher {
 
         let peer = match msg.chat() {
             Ok(chat) => PeerRef::from(chat),
-            Err(pr)  => pr,
+            Err(pr) => pr,
         };
 
         let _ = client
@@ -122,40 +145,47 @@ impl Dispatcher {
 
         // Любое исходящее НЕ-команда сбрасывает AFK
         let prefix = self.config.prefix_char();
-        if self.storage.get::<bool>("afk.active").unwrap_or(false)
-            && !text.starts_with(prefix)
-        {
+        if self.storage.get::<bool>("afk.active").unwrap_or(false) && !text.starts_with(prefix) {
             let _ = self.storage.del("afk.active");
             let _ = self.storage.del("afk.reason");
             let _ = self.storage.del("afk.since");
         }
 
-        if !text.starts_with(prefix) { return Ok(()); }
+        if !text.starts_with(prefix) {
+            return Ok(());
+        }
 
         let rest = text[prefix.len_utf8()..].trim_start();
-        if rest.is_empty() { return Ok(()); }
+        if rest.is_empty() {
+            return Ok(());
+        }
 
         let mut parts = rest.splitn(2, char::is_whitespace);
         let cmd = match parts.next() {
             Some(c) if !c.is_empty() => c.to_lowercase(),
             _ => return Ok(()),
         };
-        let args_raw  = parts.next().unwrap_or("").to_owned();
+        let args_raw = parts.next().unwrap_or("").to_owned();
         let args: Vec<String> = args_raw.split_whitespace().map(str::to_owned).collect();
 
         let handler = self.modules.iter().find(|m| {
-            m.commands().iter().any(|c| c.name.eq_ignore_ascii_case(&cmd))
+            m.commands()
+                .iter()
+                .any(|c| c.name.eq_ignore_ascii_case(&cmd))
         });
 
         match handler {
-            None => { warn!("Неизвестная команда: '{cmd}'"); Ok(()) }
+            None => {
+                warn!("Неизвестная команда: '{cmd}'");
+                Ok(())
+            }
             Some(module) => {
                 let ctx = Context {
                     client,
                     message: msg,
                     args,
                     args_raw,
-                    config:  Arc::clone(&self.config),
+                    config: Arc::clone(&self.config),
                     storage: Arc::clone(&self.storage),
                 };
                 if let Err(e) = module.handle(&cmd, ctx).await {

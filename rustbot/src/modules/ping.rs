@@ -7,14 +7,12 @@ pub struct PingModule;
 
 #[async_trait]
 impl Module for PingModule {
-    fn name(&self) -> &'static str { "ping" }
+    fn name(&self) -> &str {
+        "ping"
+    }
 
-    fn commands(&self) -> &[Command] {
-        &[Command {
-            name:        "ping",
-            description: "Проверка времени отклика",
-            usage:       ".ping",
-        }]
+    fn commands(&self) -> Vec<Command> {
+        vec![Command::new("ping", "Проверка времени отклика", ".ping")]
     }
 
     async fn handle(&self, _cmd: &str, ctx: Context) -> Result<()> {
@@ -24,6 +22,7 @@ impl Module for PingModule {
             ctx.edit("🏓 ...").await?;
             start.elapsed().as_millis()
         };
-        ctx.edit(format!("🏓 <b>Pong!</b> <code>{ms}ms</code>")).await
+        ctx.edit(format!("🏓 <b>Pong!</b> <code>{ms}ms</code>"))
+            .await
     }
 }

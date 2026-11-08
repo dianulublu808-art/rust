@@ -10,7 +10,8 @@ use tokio::time::{timeout, Duration};
 pub struct EvalModule;
 
 fn wrap_code(code: &str) -> String {
-    let code = code.trim()
+    let code = code
+        .trim()
         .trim_start_matches("```rust")
         .trim_start_matches("```")
         .trim_end_matches("```")
@@ -24,20 +25,18 @@ fn wrap_code(code: &str) -> String {
 
 #[async_trait]
 impl Module for EvalModule {
-    fn name(&self) -> &'static str { "eval" }
+    fn name(&self) -> &str {
+        "eval"
+    }
 
-    fn commands(&self) -> &[Command] {
-        &[
-            Command {
-                name:        "eval",
-                description: "Скомпилировать и запустить Rust-код",
-                usage:       ".eval println!(\"Hello!\");",
-            },
-            Command {
-                name:        "e",
-                description: "Псевдоним .eval",
-                usage:       ".e <код>",
-            },
+    fn commands(&self) -> Vec<Command> {
+        vec![
+            Command::new(
+                "eval",
+                "Скомпилировать и запустить Rust-код",
+                ".eval println!(\"Hello!\");",
+            ),
+            Command::new("e", "Псевдоним .eval", ".e <код>"),
         ]
     }
 
@@ -46,8 +45,13 @@ impl Module for EvalModule {
             // Попробуем текст ответного сообщения
             match ctx.message.reply_to_message_id() {
                 Some(rid) => {
-                    let msgs = ctx.client.get_messages_by_id(ctx.peer_ref(), &[rid]).await?;
-                    msgs.into_iter().flatten().next()
+                    let msgs = ctx
+                        .client
+                        .get_messages_by_id(ctx.peer_ref(), &[rid])
+                        .await?;
+                    msgs.into_iter()
+                        .flatten()
+                        .next()
                         .map(|m| m.text().to_owned())
                         .unwrap_or_default()
                 }
@@ -58,7 +62,9 @@ impl Module for EvalModule {
         };
 
         if raw.trim().is_empty() {
-            return ctx.edit("❌ Использование: `.eval <код>` или ответом на сообщение с кодом").await;
+            return ctx
+                .edit("❌ Использование: `.eval <код>` или ответом на сообщение с кодом")
+                .await;
         }
 
         let code = wrap_code(&raw);
@@ -78,13 +84,21 @@ impl Module for EvalModule {
         let compile = timeout(
             Duration::from_secs(secs),
             TokioCmd::new("rustc")
-                .args(["--edition", "2021", "-o", bin_path.to_str().unwrap(), src_path.to_str().unwrap()])
-                .stdout(Stdio::piped()).stderr(Stdio::piped())
+                .args([
+                    "--edition",
+                    "2021",
+                    "-o",
+                    bin_path.to_str().unwrap(),
+                    src_path.to_str().unwrap(),
+                ])
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
                 .output(),
-        ).await;
+        )
+        .await;
 
         let co = match compile {
-            Err(_)    => return ctx.edit("⏰ Компиляция превысила лимит").await,
+            Err(_) => return ctx.edit("⏰ Компиляция превысила лимит").await,
             Ok(Err(e)) => return ctx.edit(format!("❌ rustc не найден: {e}")).await,
             Ok(Ok(o)) => o,
         };
@@ -100,30 +114,33 @@ impl Module for EvalModule {
         let run = timeout(
             Duration::from_secs(secs),
             TokioCmd::new(&bin_path)
-                .stdout(Stdio::piped()).stderr(Stdio::piped())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
                 .output(),
-        ).await;
+        )
+        .await;
 
         let _ = std::fs::remove_file(&bin_path);
 
         let ro = match run {
-            Err(_)    => return ctx.edit("⏰ Выполнение превысило лимит").await,
+            Err(_) => return ctx.edit("⏰ Выполнение превысило лимит").await,
             Ok(Err(e)) => return ctx.edit(format!("❌ Не удалось запустить: {e}")).await,
             Ok(Ok(o)) => o,
         };
 
         let stdout = String::from_utf8_lossy(&ro.stdout);
         let stderr = String::from_utf8_lossy(&ro.stderr);
-        let code   = ro.status.code().unwrap_or(-1);
+        let code = ro.status.code().unwrap_or(-1);
 
         let output = match (stdout.trim().is_empty(), stderr.trim().is_empty()) {
-            (true,  true)  => format!("(нет вывода, exit {code})"),
-            (false, true)  => stdout.trim_end().to_owned(),
-            (true,  false) => format!("stderr:\n{}", stderr.trim_end()),
+            (true, true) => format!("(нет вывода, exit {code})"),
+            (false, true) => stdout.trim_end().to_owned(),
+            (true, false) => format!("stderr:\n{}", stderr.trim_end()),
             (false, false) => format!("{}\nstderr:\n{}", stdout.trim_end(), stderr.trim_end()),
         };
 
         let icon = if ro.status.success() { "✅" } else { "⚠️" };
-        ctx.edit_code(&format!("{icon} exit {code}:"), &output).await
+        ctx.edit_code(&format!("{icon} exit {code}:"), &output)
+            .await
     }
 }
