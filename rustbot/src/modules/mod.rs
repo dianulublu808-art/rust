@@ -9,6 +9,7 @@ use std::sync::{Arc, RwLock};
 pub type Registry = Arc<RwLock<Vec<Arc<dyn Module>>>>;
 
 pub mod afk;
+pub mod botconfig;
 pub mod eval;
 pub mod exec;
 pub mod help;

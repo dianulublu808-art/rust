@@ -68,7 +68,7 @@ impl Module for EvalModule {
         }
 
         let code = wrap_code(&raw);
-        let secs = ctx.config.eval_timeout;
+        let secs = super::botconfig::eval_timeout(&ctx.storage, &ctx.config);
 
         ctx.edit("⏳ Компилирую...").await?;
 

@@ -35,7 +35,7 @@ impl Module for ExecModule {
 
 async fn run_streaming(ctx: Context) -> Result<()> {
     let cmd = ctx.args_raw.trim().to_owned();
-    let timeout_secs = ctx.config.exec_timeout;
+    let timeout_secs = super::botconfig::exec_timeout(&ctx.storage, &ctx.config);
 
     ctx.edit(format!("⏳ <code>{}</code>", truncate(&cmd, 200)))
         .await?;

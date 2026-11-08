@@ -44,7 +44,7 @@ async fn cmd_translate(ctx: &Context) -> Result<()> {
 }
 
 async fn parse_args(ctx: &Context) -> Result<(String, String)> {
-    let default_lang = "ru".to_owned();
+    let default_lang = super::botconfig::translate_lang(&ctx.storage);
 
     if ctx.args.is_empty() {
         // Только ответ

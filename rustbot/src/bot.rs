@@ -2,7 +2,7 @@ use crate::{
     config::Config,
     dispatcher::Dispatcher,
     modules::{
-        afk::AfkModule, eval::EvalModule, exec::ExecModule, help::HelpModule, info::InfoModule,
+        afk::AfkModule, botconfig::BotConfigModule, eval::EvalModule, exec::ExecModule, help::HelpModule, info::InfoModule,
         notes::NotesModule, ping::PingModule, raw::RawModule, security::SecurityModule,
         reload::ReloadModule, settings::SettingsModule, sysinfo::SysinfoModule,
         translate::TranslateModule, updater::UpdaterModule, Module, Registry,
@@ -101,6 +101,7 @@ fn build_dispatcher(
         Arc::new(NotesModule),
         Arc::new(AfkModule),
         Arc::new(SettingsModule),
+        Arc::new(BotConfigModule),
         Arc::new(SecurityModule::new(me_id)),
         Arc::new(TranslateModule),
         Arc::new(UpdaterModule),
