@@ -1,6 +1,6 @@
 use crate::{
     config::Config,
-    modules::{security, Context, Module},
+    modules::{security, Context, Module, Registry},
     storage::Storage,
 };
 use anyhow::{bail, Result};
@@ -11,7 +11,7 @@ use std::sync::Arc;
 use tracing::{debug, error, warn};
 
 pub struct Dispatcher {
-    modules: Vec<Arc<dyn Module>>,
+    modules: Registry,
     config: Arc<Config>,
     storage: Arc<Storage>,
     me_id: i64,
@@ -24,22 +24,11 @@ impl Dispatcher {
         storage: Arc<Storage>,
         me_id: i64,
         me_username: Option<String>,
-        modules: Vec<Arc<dyn Module>>,
+        modules: Registry,
     ) -> Result<Self> {
-        let mut command_owners = HashMap::new();
-        for m in &modules {
-            for c in m.commands() {
-                let key = c.name.to_ascii_lowercase();
-                if let Some(previous) = command_owners.insert(key.clone(), m.name().to_owned()) {
-                    bail!(
-                        "command '{}' is registered by both '{}' and '{}'",
-                        key,
-                        previous,
-                        m.name()
-                    );
-                }
-                debug!("cmd '{}' ← {}", c.name, m.name());
-            }
+        {
+            let g = modules.read().unwrap();
+            check_duplicates(&g)?;
         }
         Ok(Self {
             modules,
@@ -177,11 +166,18 @@ impl Dispatcher {
             return Ok(());
         }
 
-        let handler = self.modules.iter().find(|m| {
-            m.commands()
+        let handler: Option<Arc<dyn Module>> = {
+            let g = self.modules.read().unwrap();
+            let found = g
                 .iter()
-                .any(|c| c.name.eq_ignore_ascii_case(&cmd))
-        });
+                .find(|m| {
+                    m.commands()
+                        .iter()
+                        .any(|c| c.name.eq_ignore_ascii_case(&cmd))
+                })
+                .cloned();
+            found
+        };
 
         match handler {
             None => {
@@ -218,4 +214,23 @@ fn is_recovery_command(cmd: &str) -> bool {
         cmd,
         "blacklist" | "unblacklistchat" | "unblockchat" | "unblacklistuser" | "unblockuser"
     )
+}
+
+pub fn check_duplicates(modules: &[Arc<dyn Module>]) -> Result<()> {
+    let mut command_owners = HashMap::new();
+    for m in modules {
+        for c in m.commands() {
+            let key = c.name.to_ascii_lowercase();
+            if let Some(previous) = command_owners.insert(key.clone(), m.name().to_owned()) {
+                bail!(
+                    "command '{}' is registered by both '{}' and '{}'",
+                    key,
+                    previous,
+                    m.name()
+                );
+            }
+            debug!("cmd '{}' ← {}", c.name, m.name());
+        }
+    }
+    Ok(())
 }

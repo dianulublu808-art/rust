@@ -4,8 +4,8 @@ use crate::{
     modules::{
         afk::AfkModule, eval::EvalModule, exec::ExecModule, help::HelpModule, info::InfoModule,
         notes::NotesModule, ping::PingModule, raw::RawModule, security::SecurityModule,
-        settings::SettingsModule, sysinfo::SysinfoModule, translate::TranslateModule,
-        updater::UpdaterModule, Module,
+        reload::ReloadModule, settings::SettingsModule, sysinfo::SysinfoModule,
+        translate::TranslateModule, updater::UpdaterModule, Module, Registry,
     },
     storage::Storage,
 };
@@ -13,7 +13,7 @@ use anyhow::{bail, Context as _, Result};
 use grammers_client::{Client, SignInError, UpdatesConfiguration};
 use grammers_mtsender::SenderPool;
 use grammers_session::storages::TlSession;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use tokio::signal;
 use tracing::{error, info};
 
@@ -91,7 +91,7 @@ fn build_dispatcher(
     me_id: i64,
     me_username: Option<String>,
 ) -> Result<Dispatcher> {
-    let mut base_modules: Vec<Arc<dyn Module>> = vec![
+    let base_modules: Vec<Arc<dyn Module>> = vec![
         Arc::new(PingModule),
         Arc::new(InfoModule),
         Arc::new(SysinfoModule),
@@ -106,13 +106,19 @@ fn build_dispatcher(
         Arc::new(UpdaterModule),
     ];
 
-    base_modules.extend(crate::plugins::load_plugins(&config.plugin_dir)?);
-
-    let help = Arc::new(HelpModule::new(&base_modules));
+    let registry: Registry = Arc::new(RwLock::new(Vec::new()));
     let mut all = base_modules;
-    all.push(help);
+    all.push(Arc::new(HelpModule::new(Arc::clone(&registry))));
+    let core_count = all.len() + 1;
+    all.push(Arc::new(ReloadModule::new(
+        Arc::clone(&registry),
+        config.plugin_dir.clone(),
+        core_count,
+    )));
+    all.extend(crate::plugins::load_plugins(&config.plugin_dir)?);
+    *registry.write().unwrap() = all;
 
-    Dispatcher::new(config, storage, me_id, me_username, all)
+    Dispatcher::new(config, storage, me_id, me_username, registry)
 }
 
 async fn event_loop(

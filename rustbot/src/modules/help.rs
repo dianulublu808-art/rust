@@ -1,19 +1,14 @@
-use super::{Command, Context, Module};
+use super::{Command, Context, Module, Registry};
 use anyhow::Result;
 use async_trait::async_trait;
-use std::sync::Arc;
 
 pub struct HelpModule {
-    entries: Vec<(String, Vec<Command>)>,
+    registry: Registry,
 }
 
 impl HelpModule {
-    pub fn new(modules: &[Arc<dyn Module>]) -> Self {
-        let entries = modules
-            .iter()
-            .map(|m| (m.name().to_owned(), m.commands()))
-            .collect();
-        Self { entries }
+    pub fn new(registry: Registry) -> Self {
+        Self { registry }
     }
 }
 
@@ -32,9 +27,16 @@ impl Module for HelpModule {
     }
 
     async fn handle(&self, _cmd: &str, ctx: Context) -> Result<()> {
+        let entries: Vec<(String, Vec<Command>)> = self
+            .registry
+            .read()
+            .unwrap()
+            .iter()
+            .map(|m| (m.name().to_owned(), m.commands()))
+            .collect();
         if let Some(target) = ctx.args.first() {
             // .help <команда>
-            for (module, cmds) in &self.entries {
+            for (module, cmds) in &entries {
                 if let Some(c) = cmds.iter().find(|c| c.name.eq_ignore_ascii_case(target)) {
                     let usage = c
                         .usage
@@ -62,7 +64,7 @@ impl Module for HelpModule {
             "📚 <b>RustBot</b> — команды (префикс: <code>{p}</code>)\n"
         )];
 
-        for (module, cmds) in &self.entries {
+        for (module, cmds) in &entries {
             if cmds.is_empty() {
                 continue;
             }

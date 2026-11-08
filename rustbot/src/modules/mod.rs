@@ -3,7 +3,10 @@ use anyhow::Result;
 use async_trait::async_trait;
 use grammers_client::{types::update::Message, Client, InputMessage};
 use grammers_session::PeerRef;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
+
+/// Общий изменяемый список модулей (нужен для горячей перезагрузки плагинов).
+pub type Registry = Arc<RwLock<Vec<Arc<dyn Module>>>>;
 
 pub mod afk;
 pub mod eval;
@@ -13,6 +16,7 @@ pub mod info;
 pub mod notes;
 pub mod ping;
 pub mod raw;
+pub mod reload;
 pub mod security;
 pub mod settings;
 pub mod sysinfo;
