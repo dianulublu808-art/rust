@@ -13,6 +13,8 @@ pub mod info;
 pub mod notes;
 pub mod ping;
 pub mod raw;
+pub mod security;
+pub mod settings;
 pub mod sysinfo;
 pub mod translate;
 pub mod updater;
@@ -57,6 +59,13 @@ impl Context {
             Ok(chat) => PeerRef::from(chat),
             Err(pr) => pr,
         }
+    }
+
+    pub fn command_prefix(&self) -> char {
+        self.storage
+            .get::<String>("settings.prefix")
+            .and_then(|prefix| prefix.chars().next())
+            .unwrap_or_else(|| self.config.prefix_char())
     }
 
     /// Редактировать исходное сообщение.

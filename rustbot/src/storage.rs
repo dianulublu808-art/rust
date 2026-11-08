@@ -51,6 +51,53 @@ impl Storage {
         self.flush()
     }
 
+    pub fn add_i64_to_list(&self, key: &str, value: i64) -> Result<bool> {
+        let changed = {
+            let mut map = self
+                .inner
+                .write()
+                .map_err(|_| anyhow::anyhow!("storage lock poisoned"))?;
+            let list = map
+                .entry(key.to_owned())
+                .or_insert_with(|| Value::Array(Vec::new()));
+            let values = list
+                .as_array_mut()
+                .ok_or_else(|| anyhow::anyhow!("storage key '{key}' is not a list"))?;
+            if values.iter().any(|item| item.as_i64() == Some(value)) {
+                false
+            } else {
+                values.push(Value::from(value));
+                true
+            }
+        };
+        if changed {
+            self.flush()?;
+        }
+        Ok(changed)
+    }
+
+    pub fn remove_i64_from_list(&self, key: &str, value: i64) -> Result<bool> {
+        let changed = {
+            let mut map = self
+                .inner
+                .write()
+                .map_err(|_| anyhow::anyhow!("storage lock poisoned"))?;
+            let Some(list) = map.get_mut(key) else {
+                return Ok(false);
+            };
+            let values = list
+                .as_array_mut()
+                .ok_or_else(|| anyhow::anyhow!("storage key '{key}' is not a list"))?;
+            let before = values.len();
+            values.retain(|item| item.as_i64() != Some(value));
+            values.len() != before
+        };
+        if changed {
+            self.flush()?;
+        }
+        Ok(changed)
+    }
+
     pub fn keys_with_prefix(&self, prefix: &str) -> Vec<String> {
         let g = self.inner.read().unwrap_or_else(|e| e.into_inner());
         g.keys()

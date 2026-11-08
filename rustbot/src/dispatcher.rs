@@ -1,6 +1,6 @@
 use crate::{
     config::Config,
-    modules::{Context, Module},
+    modules::{security, Context, Module},
     storage::Storage,
 };
 use anyhow::{bail, Result};
@@ -68,6 +68,9 @@ impl Dispatcher {
     // ── Входящие ─────────────────────────────────────────────────────────────
 
     async fn handle_incoming(&self, client: &Client, msg: &Message) {
+        if security::is_message_blocked(&self.storage, msg) {
+            return;
+        }
         self.try_afk_reply(client, msg).await;
     }
 
@@ -144,7 +147,7 @@ impl Dispatcher {
         let text = msg.text().to_owned();
 
         // Любое исходящее НЕ-команда сбрасывает AFK
-        let prefix = self.config.prefix_char();
+        let prefix = self.command_prefix();
         if self.storage.get::<bool>("afk.active").unwrap_or(false) && !text.starts_with(prefix) {
             let _ = self.storage.del("afk.active");
             let _ = self.storage.del("afk.reason");
@@ -167,6 +170,12 @@ impl Dispatcher {
         };
         let args_raw = parts.next().unwrap_or("").to_owned();
         let args: Vec<String> = args_raw.split_whitespace().map(str::to_owned).collect();
+
+        if security::is_chat_blocked(&self.storage, msg.chat_id().bot_api_dialog_id())
+            && !is_recovery_command(&cmd)
+        {
+            return Ok(());
+        }
 
         let handler = self.modules.iter().find(|m| {
             m.commands()
@@ -195,4 +204,18 @@ impl Dispatcher {
             }
         }
     }
+
+    fn command_prefix(&self) -> char {
+        self.storage
+            .get::<String>("settings.prefix")
+            .and_then(|prefix| prefix.chars().next())
+            .unwrap_or_else(|| self.config.prefix_char())
+    }
+}
+
+fn is_recovery_command(cmd: &str) -> bool {
+    matches!(
+        cmd,
+        "blacklist" | "unblacklistchat" | "unblockchat" | "unblacklistuser" | "unblockuser"
+    )
 }

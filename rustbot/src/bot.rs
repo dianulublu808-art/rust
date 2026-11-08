@@ -3,8 +3,9 @@ use crate::{
     dispatcher::Dispatcher,
     modules::{
         afk::AfkModule, eval::EvalModule, exec::ExecModule, help::HelpModule, info::InfoModule,
-        notes::NotesModule, ping::PingModule, raw::RawModule, sysinfo::SysinfoModule,
-        translate::TranslateModule, updater::UpdaterModule, Module,
+        notes::NotesModule, ping::PingModule, raw::RawModule, security::SecurityModule,
+        settings::SettingsModule, sysinfo::SysinfoModule, translate::TranslateModule,
+        updater::UpdaterModule, Module,
     },
     storage::Storage,
 };
@@ -99,6 +100,8 @@ fn build_dispatcher(
         Arc::new(RawModule),
         Arc::new(NotesModule),
         Arc::new(AfkModule),
+        Arc::new(SettingsModule),
+        Arc::new(SecurityModule::new(me_id)),
         Arc::new(TranslateModule),
         Arc::new(UpdaterModule),
     ];

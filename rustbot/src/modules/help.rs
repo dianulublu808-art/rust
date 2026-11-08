@@ -36,12 +36,17 @@ impl Module for HelpModule {
             // .help <команда>
             for (module, cmds) in &self.entries {
                 if let Some(c) = cmds.iter().find(|c| c.name.eq_ignore_ascii_case(target)) {
+                    let usage = c
+                        .usage
+                        .strip_prefix('.')
+                        .map(|tail| format!("{}{tail}", ctx.command_prefix()))
+                        .unwrap_or_else(|| c.usage.clone());
                     return ctx
                         .edit(format!(
                             "📖 <b>{}</b> — <i>{}</i>\n\
                          🗂 Модуль: <code>{module}</code>\n\
                          💡 Использование: <code>{}</code>",
-                            c.name, c.description, c.usage,
+                            c.name, c.description, usage,
                         ))
                         .await;
                 }
@@ -52,7 +57,7 @@ impl Module for HelpModule {
         }
 
         // .help — полный список
-        let p = ctx.config.prefix_char();
+        let p = ctx.command_prefix();
         let mut lines = vec![format!(
             "📚 <b>RustBot</b> — команды (префикс: <code>{p}</code>)\n"
         )];

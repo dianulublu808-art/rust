@@ -108,7 +108,7 @@ async fn info_card(ctx: &Context) -> Result<()> {
         ram_total_fmt = ram_total_fmt,
         ram_pct = ram_pct,
         rust_ver = rustc_version(),
-        prefix = ctx.config.prefix_char(),
+        prefix = ctx.command_prefix(),
     ))
     .await
 }
