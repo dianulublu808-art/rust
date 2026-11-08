@@ -25,7 +25,7 @@ impl Module for TranslateModule {
 
 async fn cmd_translate(ctx: &Context) -> Result<()> {
     // Разбираем аргументы: .tr [lang] [текст]
-    let (lang, text) = parse_args(&ctx).await?;
+    let (lang, text) = parse_args(ctx).await?;
 
     if text.trim().is_empty() {
         return ctx

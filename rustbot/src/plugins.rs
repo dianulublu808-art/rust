@@ -107,7 +107,7 @@ pub fn load_plugins(plugin_dir: &str) -> Result<Vec<Arc<dyn Module>>> {
         }
         let wasm_bytes = fs::read(&wasm_path)
             .with_context(|| format!("read plugin WASM {}", wasm_path.display()))?;
-        let module = WasmModule::new(&engine, &mut &wasm_bytes[..])
+        let module = WasmModule::new(&engine, &wasm_bytes[..])
             .with_context(|| format!("compile plugin '{}'", manifest.name))?;
 
         let commands: Vec<Command> = manifest

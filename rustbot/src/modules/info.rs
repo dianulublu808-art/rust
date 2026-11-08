@@ -76,11 +76,7 @@ async fn info_card(ctx: &Context) -> Result<()> {
     })
     .await?;
 
-    let ram_pct = if ram_total > 0 {
-        ram_used * 100 / ram_total
-    } else {
-        0
-    };
+    let ram_pct = (ram_used * 100).checked_div(ram_total).unwrap_or(0);
     let ram_used_fmt = fmt_bytes(ram_used);
     let ram_total_fmt = fmt_bytes(ram_total);
 

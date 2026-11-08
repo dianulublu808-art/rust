@@ -80,7 +80,7 @@ async fn handle_delete(ctx: &Context) -> Result<()> {
     let peer = ctx.peer_ref();
     if let Some(reply_id) = ctx.message.reply_to_message_id() {
         ctx.client
-            .delete_messages(peer.clone(), &[reply_id])
+            .delete_messages(peer, &[reply_id])
             .await?;
     }
     ctx.client

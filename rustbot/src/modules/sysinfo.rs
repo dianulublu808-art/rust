@@ -59,7 +59,7 @@ impl Module for SysinfoModule {
                     let total = d.total_space();
                     let avail = d.available_space();
                     let used = total.saturating_sub(avail);
-                    let pct = if total > 0 { used * 100 / total } else { 0 };
+                    let pct = (used * 100).checked_div(total).unwrap_or(0);
                     format!(
                         "  💾 <code>{}</code> — {} / {} ({}%)",
                         d.name().to_string_lossy(),
@@ -71,11 +71,7 @@ impl Module for SysinfoModule {
                 .collect();
             let ram_used_fmt = fmt_bytes(used_mem);
             let ram_total_fmt = fmt_bytes(total_mem);
-            let ram_pct = if total_mem > 0 {
-                used_mem * 100 / total_mem
-            } else {
-                0
-            };
+            let ram_pct = (used_mem * 100).checked_div(total_mem).unwrap_or(0);
             let swap_used_fmt = fmt_bytes(used_swap);
             let swap_total_fmt = fmt_bytes(total_swap);
             let disk_text = if disk_lines.is_empty() {
