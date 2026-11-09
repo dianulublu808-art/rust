@@ -18,7 +18,19 @@ impl Storage {
         let map: HashMap<String, Value> = if path.exists() {
             let text = std::fs::read_to_string(&path)
                 .with_context(|| format!("read storage {:?}", path))?;
-            serde_json::from_str(&text).unwrap_or_default()
+            match serde_json::from_str(&text) {
+                Ok(map) => map,
+                Err(e) => {
+                    // не затираем повреждённый файл молча — сохраняем копию
+                    let corrupt = path.with_extension("json.corrupt");
+                    let _ = std::fs::copy(&path, &corrupt);
+                    tracing::error!(
+                        "Хранилище повреждено ({e}); копия сохранена в {:?}, начинаю с пустого",
+                        corrupt
+                    );
+                    HashMap::new()
+                }
+            }
         } else {
             HashMap::new()
         };
@@ -109,8 +121,27 @@ impl Storage {
     fn flush(&self) -> Result<()> {
         let g = self.inner.read().map_err(|_| anyhow::anyhow!("lock"))?;
         let json = serde_json::to_string_pretty(&*g)?;
-        std::fs::write(&self.path, json)
-            .with_context(|| format!("write storage {:?}", self.path))?;
+        // атомарная запись: tmp + rename, чтобы сбой не оставил обрезанный файл
+        let tmp = self.path.with_extension("json.tmp");
+        std::fs::write(&tmp, json).with_context(|| format!("write storage {:?}", tmp))?;
+        std::fs::rename(&tmp, &self.path)
+            .with_context(|| format!("replace storage {:?}", self.path))?;
         Ok(())
+    }
+
+    /// Полностью заменить содержимое (для `.restore`).
+    pub fn replace_all(&self, map: HashMap<String, Value>) -> Result<()> {
+        {
+            let mut g = self
+                .inner
+                .write()
+                .map_err(|_| anyhow::anyhow!("storage lock poisoned"))?;
+            *g = map;
+        }
+        self.flush()
+    }
+
+    pub fn path(&self) -> &Path {
+        &self.path
     }
 }

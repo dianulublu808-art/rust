@@ -1,4 +1,4 @@
-use super::{Command, Context, Module};
+use super::{esc, Command, Context, Module};
 use anyhow::{Context as _, Result};
 use async_trait::async_trait;
 use std::path::PathBuf;
@@ -17,8 +17,8 @@ impl Module for UpdaterModule {
         vec![
             Command::new(
                 "update",
-                "Скачать обновления из git и пересобрать бота",
-                ".update",
+                "Обновить из git и пересобрать (check — только проверить, или имя ветки)",
+                ".update [check|ветка]",
             ),
             Command::new("restart", "Перезапустить бота", ".restart"),
         ]
@@ -48,7 +48,7 @@ fn repo_dir() -> Option<PathBuf> {
 
 async fn run_cmd(args: &[&str], cwd: &PathBuf) -> Result<(bool, String)> {
     let out = timeout(
-        Duration::from_secs(600),
+        Duration::from_secs(1800),
         TokioCmd::new(args[0])
             .args(&args[1..])
             .current_dir(cwd)
@@ -68,52 +68,149 @@ async fn run_cmd(args: &[&str], cwd: &PathBuf) -> Result<(bool, String)> {
     Ok((out.status.success(), combined))
 }
 
+async fn git_out(args: &[&str], repo: &PathBuf) -> String {
+    match run_cmd(args, repo).await {
+        Ok((true, out)) => out.trim().to_owned(),
+        _ => String::new(),
+    }
+}
+
+fn valid_branch(b: &str) -> bool {
+    !b.is_empty()
+        && b.len() <= 100
+        && !b.starts_with('-')
+        && !b.contains("..")
+        && b.chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '/' | '-'))
+}
+
+fn short(hash: &str) -> &str {
+    &hash[..hash.len().min(7)]
+}
+
+fn tail(s: &str, max: usize) -> &str {
+    if s.len() <= max {
+        return s;
+    }
+    let mut start = s.len() - max;
+    while !s.is_char_boundary(start) {
+        start += 1;
+    }
+    &s[start..]
+}
+
 // ── команды ──────────────────────────────────────────────────────────────────
 
 async fn cmd_update(ctx: &Context) -> Result<()> {
-    let repo = match repo_dir() {
-        Some(d) => d,
-        None => {
-            return ctx
-                .edit(
-                    "❌ Не удалось определить директорию репозитория.\n\
-                              Убедись, что запускаешь собранный бинарник из `target/release/`",
-                )
-                .await;
-        }
+    let Some(repo) = repo_dir() else {
+        return ctx
+            .edit(
+                "❌ Не удалось определить директорию репозитория.\n\
+                 Запускай собранный бинарник из <code>target/release/</code>",
+            )
+            .await;
     };
-
     let rustbot = rustbot_dir().unwrap();
 
-    // 1. git pull
-    ctx.edit("🔄 <b>Шаг 1/3:</b> git pull...").await?;
-    let (ok, out) = run_cmd(&["git", "pull", "origin", "rustbot"], &repo).await?;
+    let arg = ctx.args.first().map(String::as_str);
+    let check_only = arg.is_some_and(|a| a.eq_ignore_ascii_case("check"));
+
+    let current = git_out(&["git", "rev-parse", "--abbrev-ref", "HEAD"], &repo).await;
+    if current.is_empty() || current == "HEAD" {
+        return ctx
+            .edit("❌ Репозиторий в состоянии detached HEAD — укажи ветку: <code>.update имя</code>")
+            .await;
+    }
+    let branch = match arg {
+        Some(a) if !check_only => a.to_owned(),
+        _ => current.clone(),
+    };
+    if !valid_branch(&branch) {
+        return ctx.edit("❌ Недопустимое имя ветки").await;
+    }
+
+    let old = git_out(&["git", "rev-parse", "HEAD"], &repo).await;
+
+    // 1. fetch
+    ctx.edit(format!(
+        "🔄 <b>Шаг 1/3:</b> git fetch <code>{}</code>...",
+        esc(&branch)
+    ))
+    .await?;
+    let (ok, out) = run_cmd(&["git", "fetch", "origin", &branch], &repo).await?;
     if !ok {
-        let snippet = &out[..out.len().min(1000)];
         return ctx
-            .edit_code("❌ git pull завершился с ошибкой:", snippet)
+            .edit_code("❌ git fetch завершился с ошибкой:", tail(&out, 1000))
+            .await;
+    }
+    let new = git_out(&["git", "rev-parse", "FETCH_HEAD"], &repo).await;
+    let same_branch = branch == current;
+
+    if same_branch && old == new {
+        return ctx
+            .edit(format!(
+                "✅ <b>Уже актуальная версия</b> (<code>{}</code>, ветка <code>{}</code>)",
+                short(&old),
+                esc(&branch)
+            ))
             .await;
     }
 
-    if out.contains("Already up to date") || out.contains("уже обновлён") {
+    let subject = git_out(&["git", "log", "-1", "--format=%s", "FETCH_HEAD"], &repo).await;
+
+    if check_only {
         return ctx
-            .edit("✅ <b>Уже актуальная версия</b>, обновлений нет.")
+            .edit(format!(
+                "📦 <b>Есть обновление</b> ветки <code>{}</code>\n<code>{}</code> → <code>{}</code>\n{}\nУстановить: <code>{}update</code>",
+                esc(&branch),
+                short(&old),
+                short(&new),
+                esc(&subject),
+                ctx.command_prefix()
+            ))
             .await;
     }
 
-    // 2. cargo build --release
-    ctx.edit("🔨 <b>Шаг 2/3:</b> Сборка (может занять несколько минут)...")
-        .await?;
+    // 2. применяем (ff-only: локальные правки не затираем)
+    let (ok, out) = if same_branch {
+        run_cmd(&["git", "merge", "--ff-only", "FETCH_HEAD"], &repo).await?
+    } else {
+        run_cmd(&["git", "checkout", "-B", &branch, "FETCH_HEAD"], &repo).await?
+    };
+    if !ok {
+        return ctx
+            .edit_code("❌ Не удалось применить обновление:", tail(&out, 1000))
+            .await;
+    }
+
+    // 3. сборка
+    ctx.edit(format!(
+        "🔨 <b>Шаг 2/3:</b> сборка <code>{}</code> (может занять много минут)...",
+        short(&new)
+    ))
+    .await?;
     let (ok, out) = run_cmd(&["cargo", "build", "--release"], &rustbot).await?;
 
     if !ok {
-        let snippet = &out[..out.len().min(2000)];
-        return ctx.edit_code("❌ Ошибка компиляции:", snippet).await;
+        // откат кода к прежней версии; запущенный бинарник не тронут
+        let _ = run_cmd(&["git", "checkout", "-B", &current, &old], &repo).await;
+        return ctx
+            .edit_code(
+                &format!(
+                    "❌ Ошибка компиляции, код откатан на <code>{}</code>:",
+                    short(&old)
+                ),
+                tail(&out, 2000),
+            )
+            .await;
     }
 
-    // 3. Restart
-    ctx.edit("✅ <b>Шаг 3/3:</b> Собрано! Перезапускаю...")
-        .await?;
+    ctx.edit(format!(
+        "✅ <b>Шаг 3/3:</b> собрано <code>{}</code> — {}\nПерезапускаю...",
+        short(&new),
+        esc(&subject)
+    ))
+    .await?;
     do_restart();
 }
 
