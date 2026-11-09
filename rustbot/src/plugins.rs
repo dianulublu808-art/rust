@@ -235,7 +235,7 @@ impl Module for WasmPlugin {
             .await
             .context("WASM plugin worker failed")??;
 
-        ctx.edit(output).await
+        ctx.edit(crate::modules::esc(&output)).await
     }
 }
 
