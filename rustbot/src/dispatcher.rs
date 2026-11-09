@@ -8,7 +8,7 @@ use grammers_client::{types::update::Message, Client, InputMessage, Update};
 use grammers_session::PeerRef;
 use std::collections::HashMap;
 use std::sync::Arc;
-use tracing::{debug, error, warn};
+use tracing::{debug, error, info, warn};
 
 pub struct Dispatcher {
     modules: Registry,
@@ -165,6 +165,12 @@ impl Dispatcher {
         {
             return Ok(());
         }
+
+        info!(
+            "команда '{}' в чате {}",
+            cmd,
+            msg.chat_id().bot_api_dialog_id()
+        );
 
         let handler: Option<Arc<dyn Module>> = {
             let g = self.modules.read().unwrap();

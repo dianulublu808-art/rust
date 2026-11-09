@@ -15,7 +15,8 @@ use grammers_mtsender::SenderPool;
 use grammers_session::storages::TlSession;
 use std::sync::{Arc, RwLock};
 use tokio::signal;
-use tracing::{error, info};
+use std::time::Duration;
+use tracing::{error, info, warn};
 
 pub async fn run(config: Arc<Config>) -> Result<()> {
     let session = Arc::new(
@@ -51,6 +52,29 @@ pub async fn run(config: Arc<Config>) -> Result<()> {
     let me_id = me.bare_id();
     let me_username = me.username().map(str::to_owned);
     info!("Авторизован как: {} (id={})", me.full_name(), me_id);
+
+    // Без кэша пиров (access_hash каналов/групп) обновления из них теряются —
+    // отсюда "cannot getChannelDifference ... missing its hash".
+    warm_peer_cache(&client).await;
+    if let Err(e) = session.save_to_file(&config.session_path) {
+        warn!("Не удалось сохранить сессию: {e}");
+    }
+    {
+        // Сессию сохраняем периодически, а не только при выходе:
+        // Termux/Android может убить процесс, и кэш пиров пропадёт.
+        let session = Arc::clone(&session);
+        let path = config.session_path.clone();
+        tokio::spawn(async move {
+            let mut tick = tokio::time::interval(Duration::from_secs(120));
+            tick.tick().await;
+            loop {
+                tick.tick().await;
+                if let Err(e) = session.save_to_file(&path) {
+                    warn!("Не удалось сохранить сессию: {e}");
+                }
+            }
+        });
+    }
 
     let dispatcher = Arc::new(build_dispatcher(
         Arc::clone(&config),
@@ -128,8 +152,23 @@ async fn event_loop(
     dispatcher: Arc<Dispatcher>,
 ) -> Result<()> {
     info!("Бот запущен! Жду команды...");
+    let mut errors = 0u32;
     loop {
-        let update = update_stream.next().await?;
+        let update = match update_stream.next().await {
+            Ok(u) => {
+                errors = 0;
+                u
+            }
+            Err(e) => {
+                errors += 1;
+                error!("Ошибка потока обновлений ({errors}/10): {e}");
+                if errors >= 10 {
+                    return Err(e.into());
+                }
+                tokio::time::sleep(Duration::from_secs(2)).await;
+                continue;
+            }
+        };
         let dispatcher = Arc::clone(&dispatcher);
         let client = client.clone();
         tokio::spawn(async move {
@@ -137,6 +176,26 @@ async fn event_loop(
                 error!("Ошибка диспетчера: {e:#}");
             }
         });
+    }
+}
+
+async fn warm_peer_cache(client: &Client) {
+    info!("Загружаю список чатов (кэш пиров)...");
+    let fut = async {
+        let mut dialogs = client.iter_dialogs();
+        let mut n = 0usize;
+        while dialogs.next().await?.is_some() {
+            n += 1;
+            if n >= 2000 {
+                break;
+            }
+        }
+        Ok::<usize, grammers_client::InvocationError>(n)
+    };
+    match tokio::time::timeout(Duration::from_secs(90), fut).await {
+        Ok(Ok(n)) => info!("Кэш чатов загружен: {n} диалогов"),
+        Ok(Err(e)) => warn!("Не удалось загрузить список чатов: {e}"),
+        Err(_) => warn!("Таймаут загрузки списка чатов"),
     }
 }
 
