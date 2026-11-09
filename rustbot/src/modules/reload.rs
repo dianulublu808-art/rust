@@ -45,7 +45,7 @@ impl ReloadModule {
         if plugins.is_empty() {
             return ctx
                 .edit(format!(
-                    "🧩 Плагинов нет. Положи манифест и .wasm в <code>{}</code> и вызови <code>{}reload</code>",
+                    "🧩 <b>Плагинов нет</b>\n<i>Положи манифест и .wasm в <code>{}</code> и вызови <code>{}reload</code></i>",
                     self.plugin_dir,
                     ctx.command_prefix()
                 ))
@@ -53,16 +53,17 @@ impl ReloadModule {
         }
 
         let p = ctx.command_prefix();
-        let mut lines = vec![format!("🧩 <b>Плагины</b> ({})\n", plugins.len())];
+        let mut rows = Vec::new();
         for (name, cmds) in plugins {
             let list = cmds
                 .iter()
                 .map(|c| format!("<code>{p}{}</code>", c.name))
                 .collect::<Vec<_>>()
-                .join(", ");
-            lines.push(format!("• <b>{name}</b>: {list}"));
+                .join(" ");
+            rows.push(format!("▫️ <b>{}</b>  {list}", super::esc(&name)));
         }
-        ctx.edit(lines.join("\n")).await
+        let title = format!("Плагины · {}", rows.len());
+        ctx.edit(super::ui::card("🧩", &title, &rows)).await
     }
 
     async fn cmd_reload(&self, ctx: &Context) -> Result<()> {
@@ -72,7 +73,10 @@ impl ReloadModule {
             Ok(p) => p,
             Err(e) => {
                 return ctx
-                    .edit(format!("❌ Ошибка загрузки плагинов:\n<code>{}</code>", super::esc(&format!("{e:#}"))))
+                    .edit(super::ui::err(&format!(
+                        "Не удалось загрузить плагины:\n<code>{}</code>",
+                        super::esc(&format!("{e:#}"))
+                    )))
                     .await;
             }
         };
@@ -92,30 +96,31 @@ impl ReloadModule {
 
         if let Err(e) = result {
             return ctx
-                .edit(format!(
-                    "❌ Конфликт команд, старые плагины оставлены:\n<code>{}</code>",
+                .edit(super::ui::err(&format!(
+                    "Конфликт команд, прежние плагины оставлены:\n<code>{}</code>",
                     super::esc(&format!("{e:#}"))
-                ))
+                )))
                 .await;
         }
 
         let added: Vec<&String> = new_names.iter().filter(|n| !old_names.contains(n)).collect();
         let removed: Vec<&String> = old_names.iter().filter(|n| !new_names.contains(n)).collect();
 
-        let mut text = format!("🔄 Плагины перезагружены: <b>{}</b>", new_names.len());
+        let mut rows = vec![format!("📦 Загружено <b>{}</b>", new_names.len())];
         if !added.is_empty() {
-            text.push_str(&format!(
-                "\n➕ {}",
-                added.iter().map(|n| n.as_str()).collect::<Vec<_>>().join(", ")
+            rows.push(format!(
+                "➕ {}",
+                added.iter().map(|n| super::esc(n)).collect::<Vec<_>>().join(", ")
             ));
         }
         if !removed.is_empty() {
-            text.push_str(&format!(
-                "\n➖ {}",
-                removed.iter().map(|n| n.as_str()).collect::<Vec<_>>().join(", ")
+            rows.push(format!(
+                "➖ {}",
+                removed.iter().map(|n| super::esc(n)).collect::<Vec<_>>().join(", ")
             ));
         }
-        ctx.edit(text).await
+        ctx.edit(super::ui::card("🔄", "Плагины перезагружены", &rows))
+            .await
     }
 }
 

@@ -33,28 +33,24 @@ impl Module for RawModule {
 
 fn chat_label(chat: &Chat) -> String {
     match chat {
-        Chat::User(u) => format!("👤 User <code>{}</code>", u.bare_id()),
-        Chat::Group(g) => format!("👥 Group <code>{}</code>", g.id()),
-        Chat::Channel(c) => format!("📢 Channel <code>{}</code>", c.bare_id()),
+        Chat::User(u) => format!("👤 Личный чат <code>{}</code>", u.bare_id()),
+        Chat::Group(g) => format!("👥 Группа <code>{}</code>", g.id()),
+        Chat::Channel(c) => format!("📢 Канал <code>{}</code>", c.bare_id()),
     }
 }
 
 async fn handle_id(ctx: &Context) -> Result<()> {
     let chat_part = match ctx.message.chat() {
         Ok(chat) => chat_label(chat),
-        Err(pr) => format!("🆔 <code>{}</code>", pr.id),
+        Err(pr) => format!("💬 Чат <code>{}</code>", pr.id),
     };
 
-    let sender_part = ctx
-        .message
-        .sender()
-        .map(|s| match s {
-            Chat::User(u) => format!("\n👤 Отправитель: <code>{}</code>", u.bare_id()),
-            _ => String::new(),
-        })
-        .unwrap_or_default();
+    let mut rows = vec![chat_part];
+    if let Some(Chat::User(u)) = ctx.message.sender() {
+        rows.push(format!("🙋 Отправитель <code>{}</code>", u.bare_id()));
+    }
 
-    ctx.edit(format!("🆔 {chat_part}{sender_part}")).await
+    ctx.edit(super::ui::card("🆔", "Идентификаторы", &rows)).await
 }
 
 async fn handle_me(ctx: &Context) -> Result<()> {
@@ -62,16 +58,16 @@ async fn handle_me(ctx: &Context) -> Result<()> {
     let uname = me
         .username()
         .map(|u| format!("@{u}"))
-        .unwrap_or_else(|| "(нет)".to_owned());
+        .unwrap_or_else(|| "нет".to_owned());
 
-    ctx.edit(format!(
-        "👤 <b>Ты</b>\n\
-         🆔 ID: <code>{}</code>\n\
-         📛 Имя: {}\n\
-         🔖 Username: {}",
-        me.bare_id(),
-        super::esc(&me.full_name()),
-        uname,
+    ctx.edit(super::ui::card(
+        "👤",
+        "Профиль",
+        &[
+            format!("📛 {}", super::esc(&me.full_name())),
+            format!("🔖 {uname}"),
+            format!("🆔 <code>{}</code>", me.bare_id()),
+        ],
     ))
     .await
 }

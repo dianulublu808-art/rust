@@ -69,7 +69,7 @@ async fn cmd_save(ctx: &Context) -> Result<()> {
 
     let key = format!("{PREFIX}{name}");
     ctx.storage.set(&key, &text)?;
-    ctx.edit(format!("✅ Заметка <code>{}</code> сохранена", super::esc(&name)))
+    ctx.edit(super::ui::ok(&format!("Заметка <code>{}</code> сохранена", super::esc(&name))))
         .await
 }
 
@@ -81,7 +81,14 @@ async fn cmd_get(ctx: &Context) -> Result<()> {
 
     let key = format!("{PREFIX}{name}");
     match ctx.storage.get::<String>(&key) {
-        Some(text) => ctx.edit(format!("📝 <b>{}</b>\n{}", super::esc(&name), super::esc(&text))).await,
+        Some(text) => {
+            ctx.edit(format!(
+                "<b>📝 {}</b>\n{}",
+                super::esc(&name),
+                super::ui::quote_expandable(&super::esc(&text))
+            ))
+            .await
+        }
         None => {
             ctx.edit(format!("❌ Заметка <code>{}</code> не найдена", super::esc(&name)))
                 .await
@@ -104,10 +111,10 @@ async fn cmd_list(ctx: &Context) -> Result<()> {
         .map(|k| format!("▫️ <code>{}</code>", super::esc(&k[PREFIX.len()..])))
         .collect();
 
-    ctx.edit(format!(
-        "📚 <b>Заметки</b> ({}):\n{}",
-        keys.len(),
-        list.join("\n")
+    ctx.edit(super::ui::card(
+        "📚",
+        &format!("Заметки · {}", keys.len()),
+        &list,
     ))
     .await
 }

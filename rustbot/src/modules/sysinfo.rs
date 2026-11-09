@@ -1,4 +1,4 @@
-use super::{Command, Context, Module};
+use super::{esc, ui, Command, Context, Module};
 use anyhow::Result;
 use async_trait::async_trait;
 use chrono::Local;
@@ -21,9 +21,16 @@ impl Module for SysinfoModule {
 
     async fn handle(&self, cmd: &str, ctx: Context) -> Result<()> {
         if cmd == "uptime" {
-            let secs = System::uptime();
+            let sys_up = System::uptime();
             return ctx
-                .edit(format!("⏰ <b>Аптайм:</b> {}", fmt_uptime(secs)))
+                .edit(ui::card(
+                    "⏱",
+                    "Аптайм",
+                    &[
+                        format!("🖥 Система <b>{}</b>", ui::duration(sys_up)),
+                        format!("🦀 Бот <b>{}</b>", ui::duration(ui::process_uptime())),
+                    ],
+                ))
                 .await;
         }
 
@@ -32,12 +39,15 @@ impl Module for SysinfoModule {
         let text = tokio::task::spawn_blocking(|| {
             let mut sys = System::new_all();
             sys.refresh_all();
+            // для корректной загрузки CPU нужен второй замер
+            std::thread::sleep(sysinfo::MINIMUM_CPU_UPDATE_INTERVAL);
+            sys.refresh_cpu();
 
             let total_mem = sys.total_memory();
             let used_mem = sys.used_memory();
             let total_swap = sys.total_swap();
             let used_swap = sys.used_swap();
-            let cpu_usage = sys.global_cpu_info().cpu_usage();
+            let cpu_usage = sys.global_cpu_info().cpu_usage() as u64;
             let cpu_count = sys.cpus().len();
             let cpu_brand = sys
                 .cpus()
@@ -45,103 +55,84 @@ impl Module for SysinfoModule {
                 .map(|c| c.brand().to_owned())
                 .unwrap_or_else(|| "Unknown".into());
 
-            let os_name = System::name().unwrap_or_else(|| "?".into());
-            let os_version = System::os_version().unwrap_or_else(|| "?".into());
+            let os = format!(
+                "{} {}",
+                System::name().unwrap_or_else(|| "?".into()),
+                System::os_version().unwrap_or_else(|| "?".into())
+            );
             let kernel = System::kernel_version().unwrap_or_else(|| "?".into());
             let hostname = System::host_name().unwrap_or_else(|| "?".into());
-            let uptime = fmt_uptime(System::uptime());
-            let now = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+            let now = Local::now().format("%d.%m.%Y %H:%M:%S").to_string();
+
+            let pct = |used: u64, total: u64| (used * 100).checked_div(total).unwrap_or(0);
+
+            let head = format!("<b>🖥 {}</b>", esc(&hostname));
+            let about = ui::quote(&[
+                format!("🐧 {} · ядро {}", esc(&os), esc(&kernel)),
+                format!("⚙️ {} × {cpu_count}", esc(&cpu_brand)),
+                format!("⏱ Аптайм <b>{}</b>", ui::duration(System::uptime())),
+                format!("🕒 {now}"),
+            ]);
+
+            let mut res = vec![
+                format!(
+                    "<b>CPU</b>   {} <b>{cpu_usage}%</b>",
+                    ui::bar(cpu_usage)
+                ),
+                format!(
+                    "<b>RAM</b>   {} <b>{}%</b> · {} / {}",
+                    ui::bar(pct(used_mem, total_mem)),
+                    pct(used_mem, total_mem),
+                    ui::bytes(used_mem),
+                    ui::bytes(total_mem)
+                ),
+            ];
+            if total_swap > 0 {
+                res.push(format!(
+                    "<b>SWAP</b>  {} <b>{}%</b> · {} / {}",
+                    ui::bar(pct(used_swap, total_swap)),
+                    pct(used_swap, total_swap),
+                    ui::bytes(used_swap),
+                    ui::bytes(total_swap)
+                ));
+            }
+            let resources = ui::card("📊", "Ресурсы", &res);
 
             let disks = Disks::new_with_refreshed_list();
-            let disk_lines: Vec<String> = disks
-                .iter()
-                .map(|d| {
-                    let total = d.total_space();
-                    let avail = d.available_space();
-                    let used = total.saturating_sub(avail);
-                    let pct = (used * 100).checked_div(total).unwrap_or(0);
-                    format!(
-                        "  💾 <code>{}</code> — {} / {} ({}%)",
-                        super::esc(&d.name().to_string_lossy()),
-                        fmt_bytes(used),
-                        fmt_bytes(total),
-                        pct,
-                    )
-                })
-                .collect();
-            let ram_used_fmt = fmt_bytes(used_mem);
-            let ram_total_fmt = fmt_bytes(total_mem);
-            let ram_pct = (used_mem * 100).checked_div(total_mem).unwrap_or(0);
-            let swap_used_fmt = fmt_bytes(used_swap);
-            let swap_total_fmt = fmt_bytes(total_swap);
-            let disk_text = if disk_lines.is_empty() {
-                "  (нет данных)".to_owned()
+            let mut seen = std::collections::HashSet::new();
+            let mut disk_rows: Vec<String> = Vec::new();
+            for d in disks.iter() {
+                let total = d.total_space();
+                if total == 0 {
+                    continue;
+                }
+                let mount = d.mount_point().to_string_lossy().to_string();
+                if !seen.insert(mount.clone()) {
+                    continue;
+                }
+                let used = total.saturating_sub(d.available_space());
+                let p = pct(used, total);
+                disk_rows.push(format!(
+                    "<code>{}</code>\n{} <b>{p}%</b> · {} / {}",
+                    esc(&mount),
+                    ui::bar(p),
+                    ui::bytes(used),
+                    ui::bytes(total)
+                ));
+                if disk_rows.len() >= 4 {
+                    break;
+                }
+            }
+            let disks_block = if disk_rows.is_empty() {
+                String::new()
             } else {
-                disk_lines.join("\n")
+                format!("\n\n{}", ui::card("💾", "Диски", &disk_rows))
             };
 
-            format!(
-                "🖥 <b>Системная информация</b>\n\
-                 ━━━━━━━━━━━━━━━━━━━━\n\
-                 🏷 <b>Хост:</b> <code>{hostname}</code>\n\
-                 🖥 <b>ОС:</b> {os_name} {os_version} (ядро {kernel})\n\
-                 ⏰ <b>Аптайм:</b> {uptime}\n\
-                 🕒 <b>Время:</b> <code>{now}</code>\n\
-                 \n\
-                 ⚙️ <b>CPU:</b> {cpu_brand} × {cpu_count}\n\
-                 📊 <b>Нагрузка:</b> <code>{cpu_usage:.1}%</code>\n\
-                 \n\
-                 🧠 <b>RAM:</b> {ram_used_fmt} / {ram_total_fmt} ({ram_pct}%)\n\
-                 🔵 <b>Swap:</b> {swap_used_fmt} / {swap_total_fmt}\n\
-                 \n\
-                 💾 <b>Диски:</b>\n{disk_text}",
-                hostname = hostname,
-                os_name = os_name,
-                os_version = os_version,
-                kernel = kernel,
-                uptime = uptime,
-                now = now,
-                cpu_brand = super::esc(&cpu_brand),
-                cpu_count = cpu_count,
-                cpu_usage = cpu_usage,
-                ram_used_fmt = ram_used_fmt,
-                ram_total_fmt = ram_total_fmt,
-                ram_pct = ram_pct,
-                swap_used_fmt = swap_used_fmt,
-                swap_total_fmt = swap_total_fmt,
-                disk_text = disk_text,
-            )
+            format!("{head}\n{about}\n\n{resources}{disks_block}")
         })
         .await?;
 
-        ctx.edit(&text).await
-    }
-}
-
-fn fmt_uptime(secs: u64) -> String {
-    let d = secs / 86400;
-    let h = (secs % 86400) / 3600;
-    let m = (secs % 3600) / 60;
-    let s = secs % 60;
-    match (d, h, m) {
-        (0, 0, 0) => format!("{s}с"),
-        (0, 0, _) => format!("{m}м {s}с"),
-        (0, _, _) => format!("{h}ч {m}м {s}с"),
-        _ => format!("{d}д {h}ч {m}м {s}с"),
-    }
-}
-
-fn fmt_bytes(b: u64) -> String {
-    const G: u64 = 1 << 30;
-    const M: u64 = 1 << 20;
-    const K: u64 = 1 << 10;
-    if b >= G {
-        format!("{:.2}GB", b as f64 / G as f64)
-    } else if b >= M {
-        format!("{:.1}MB", b as f64 / M as f64)
-    } else if b >= K {
-        format!("{:.0}KB", b as f64 / K as f64)
-    } else {
-        format!("{b}B")
+        ctx.edit(text).await
     }
 }

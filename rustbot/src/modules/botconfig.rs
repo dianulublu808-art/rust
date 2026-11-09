@@ -131,26 +131,31 @@ impl Module for BotConfigModule {
         let p = ctx.command_prefix();
 
         let Some(key) = ctx.args.first() else {
-            let mut lines = vec![format!("⚙️ <b>Настройки</b> (<code>{p}config ключ значение</code>)\n")];
+            let mut rows = Vec::new();
             for s in SETTINGS {
                 let (val, custom) = current(s, &ctx.storage, &ctx.config);
-                let mark = if custom { "✏️" } else { "•" };
-                lines.push(format!(
-                    "{mark} <code>{}</code> = <code>{}</code> — {}",
+                let mark = if custom { "✏️" } else { "▫️" };
+                rows.push(format!(
+                    "{mark} <code>{}</code> = <b>{}</b>\n      <i>{}</i>",
                     s.key,
                     esc(&val),
                     s.desc
                 ));
             }
-            return ctx.edit(lines.join("\n")).await;
+            return ctx
+                .edit(format!(
+                    "{}\n\n<i>Изменить: <code>{p}config ключ значение</code> · сброс: <code>{p}config ключ reset</code></i>",
+                    super::ui::card("🎛", "Настройки", &rows)
+                ))
+                .await;
         };
 
         let Some(setting) = SETTINGS.iter().find(|s| s.key.eq_ignore_ascii_case(key)) else {
             return ctx
-                .edit(format!(
-                    "❌ Неизвестная настройка <code>{}</code>. Список: <code>{p}config</code>",
+                .edit(super::ui::err(&format!(
+                    "Неизвестная настройка <code>{}</code>. Список: <code>{p}config</code>",
                     esc(key)
-                ))
+                )))
                 .await;
         };
 
@@ -190,10 +195,10 @@ impl Module for BotConfigModule {
                 .await
             }
             Err(e) => {
-                ctx.edit(format!(
-                    "❌ <code>{}</code>: {e}",
+                ctx.edit(super::ui::err(&format!(
+                    "<code>{}</code>: {e}",
                     setting.key
-                ))
+                )))
                 .await
             }
         }

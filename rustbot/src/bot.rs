@@ -19,6 +19,7 @@ use std::time::Duration;
 use tracing::{error, info, warn};
 
 pub async fn run(config: Arc<Config>) -> Result<()> {
+    crate::modules::ui::init();
     let session = Arc::new(
         TlSession::load_file_or_create(&config.session_path)
             .with_context(|| format!("Не удалось открыть сессию '{}'", config.session_path))?,

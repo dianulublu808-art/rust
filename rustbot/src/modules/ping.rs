@@ -16,13 +16,15 @@ impl Module for PingModule {
     }
 
     async fn handle(&self, _cmd: &str, ctx: Context) -> Result<()> {
-        ctx.edit("🏓").await?;
         let start = Instant::now();
-        let ms = {
-            ctx.edit("🏓 ...").await?;
-            start.elapsed().as_millis()
+        ctx.edit("🏓").await?;
+        let ms = start.elapsed().as_millis();
+        let quality = match ms {
+            0..=150 => "🟢",
+            151..=500 => "🟡",
+            _ => "🔴",
         };
-        ctx.edit(format!("🏓 <b>Pong!</b> <code>{ms}ms</code>"))
+        ctx.edit(format!("<b>🏓 Pong</b>  {quality} <code>{ms} мс</code>"))
             .await
     }
 }

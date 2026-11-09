@@ -22,6 +22,7 @@ pub mod security;
 pub mod settings;
 pub mod sysinfo;
 pub mod translate;
+pub mod ui;
 pub mod updater;
 
 // ── Описание команды ─────────────────────────────────────────────────────────

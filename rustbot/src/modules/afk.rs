@@ -42,7 +42,10 @@ async fn cmd_afk(ctx: &Context) -> Result<()> {
     let msg = if reason.is_empty() {
         "🌙 <b>AFK включён</b>".to_owned()
     } else {
-        format!("🌙 <b>AFK включён</b>\n💬 {}", super::esc(&reason))
+        format!(
+            "🌙 <b>AFK включён</b>\n{}",
+            super::ui::quote(&[format!("💬 {}", super::esc(&reason))])
+        )
     };
     ctx.edit(msg).await
 }
@@ -56,7 +59,7 @@ async fn cmd_unafk(ctx: &Context) -> Result<()> {
     let since = ctx.storage.get::<i64>("afk.since").unwrap_or(0);
     let duration = if since > 0 {
         let secs = (Utc::now().timestamp() - since).max(0) as u64;
-        fmt_duration(secs)
+        super::ui::duration(secs)
     } else {
         String::new()
     };
@@ -65,24 +68,14 @@ async fn cmd_unafk(ctx: &Context) -> Result<()> {
     ctx.storage.del("afk.reason")?;
     ctx.storage.del("afk.since")?;
 
-    let dur_str = if duration.is_empty() {
-        String::new()
+    let text = if duration.is_empty() {
+        "☀️ <b>С возвращением!</b>".to_owned()
     } else {
-        format!(" (был {duration})")
+        format!(
+            "☀️ <b>С возвращением!</b>\n{}",
+            super::ui::quote(&[format!("🌙 Был в AFK: {duration}")])
+        )
     };
 
-    ctx.edit(format!("✅ <b>AFK снят</b>{dur_str}")).await
-}
-
-fn fmt_duration(secs: u64) -> String {
-    let h = secs / 3600;
-    let m = (secs % 3600) / 60;
-    let s = secs % 60;
-    if h > 0 {
-        format!("{h}ч {m}м")
-    } else if m > 0 {
-        format!("{m}м {s}с")
-    } else {
-        format!("{s}с")
-    }
+    ctx.edit(text).await
 }
