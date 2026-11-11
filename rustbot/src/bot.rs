@@ -44,8 +44,7 @@ pub async fn run(config: Arc<Config>) -> Result<()> {
     if !client.is_authorized().await? {
         info!("Требуется авторизация...");
         authorize(&client, &config).await?;
-        session
-            .save_to_file(&config.session_path)
+        save_session(&session, &config.session_path)
             .with_context(|| "Не удалось сохранить сессию после входа")?;
     }
 
@@ -56,7 +55,7 @@ pub async fn run(config: Arc<Config>) -> Result<()> {
     // Без кэша пиров (access_hash каналов/групп) обновления из них теряются —
     // отсюда "cannot getChannelDifference ... missing its hash".
     let dialogs = warm_peer_cache(&client).await;
-    if let Err(e) = session.save_to_file(&config.session_path) {
+    if let Err(e) = save_session(&session, &config.session_path) {
         warn!("Не удалось сохранить сессию: {e}");
     }
     {
@@ -69,7 +68,7 @@ pub async fn run(config: Arc<Config>) -> Result<()> {
             tick.tick().await;
             loop {
                 tick.tick().await;
-                if let Err(e) = session.save_to_file(&path) {
+                if let Err(e) = save_session(&session, &path) {
                     warn!("Не удалось сохранить сессию: {e}");
                 }
             }
@@ -125,20 +124,21 @@ pub async fn run(config: Arc<Config>) -> Result<()> {
 
     let loop_result = tokio::select! {
         res = event_loop(&client, &mut update_stream, Arc::clone(&dispatcher)) => res,
-        _ = signal::ctrl_c() => {
+        name = shutdown_signal() => {
             println!();
-            info!("Ctrl+C — завершаю, сохраняю сессию...");
+            info!("Получен {name} — завершаю, сохраняю сессию...");
             Ok(())
         }
     };
 
     update_stream.sync_update_state();
-    if let Err(e) = session.save_to_file(&config.session_path) {
+    if let Err(e) = save_session(&session, &config.session_path) {
         error!("Не удалось сохранить сессию: {e}");
     }
 
     handle.quit();
-    let _ = pool_task.await;
+    // не зависаем при выходе, если пул соединений не останавливается
+    let _ = tokio::time::timeout(Duration::from_secs(5), pool_task).await;
     loop_result
 }
 
@@ -211,6 +211,42 @@ async fn event_loop(
     }
 }
 
+/// Атомарное сохранение сессии: tmp + rename. Если процесс убьют посреди
+/// записи, прежний файл сессии останется целым (иначе — повторный вход).
+fn save_session(session: &TlSession, path: &str) -> std::io::Result<()> {
+    use std::io::Write;
+    use std::os::unix::fs::OpenOptionsExt;
+
+    // TlSession::save_to_file открывает только уже существующий файл и не
+    // умеет писать атомарно, поэтому сериализуем сами. В сессии лежит
+    // ключ авторизации — права 0600.
+    let tmp = format!("{path}.tmp");
+    {
+        let mut f = std::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .mode(0o600)
+            .open(&tmp)?;
+        f.write_all(&session.save())?;
+        f.sync_all()?;
+    }
+    std::fs::rename(&tmp, path)
+}
+
+/// Ждём любой сигнал остановки: Ctrl+C, SIGTERM (`pkill`, `kill`) или SIGHUP
+/// (закрыли сессию Termux).
+async fn shutdown_signal() -> &'static str {
+    use tokio::signal::unix::{signal, SignalKind};
+    let mut term = signal(SignalKind::terminate()).expect("SIGTERM handler");
+    let mut hup = signal(SignalKind::hangup()).expect("SIGHUP handler");
+    tokio::select! {
+        _ = signal::ctrl_c() => "SIGINT (Ctrl+C)",
+        _ = term.recv() => "SIGTERM",
+        _ = hup.recv() => "SIGHUP",
+    }
+}
+
 async fn warm_peer_cache(client: &Client) -> Option<usize> {
     let fut = async {
         let mut dialogs = client.iter_dialogs();
@@ -270,4 +306,45 @@ fn read_line() -> Result<String> {
     let mut line = String::new();
     std::io::stdin().lock().read_line(&mut line)?;
     Ok(line)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn sigterm_triggers_graceful_shutdown_signal() {
+        let waiter = tokio::spawn(shutdown_signal());
+        // даём обработчикам зарегистрироваться
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        let status = tokio::process::Command::new("kill")
+            .args(["-TERM", &std::process::id().to_string()])
+            .status()
+            .await
+            .unwrap();
+        assert!(status.success());
+        let name = tokio::time::timeout(Duration::from_secs(3), waiter)
+            .await
+            .expect("signal not delivered")
+            .unwrap();
+        assert_eq!(name, "SIGTERM");
+    }
+
+    #[test]
+    fn session_save_is_atomic_and_leaves_no_tmp() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("test.session");
+        let path = path.to_str().unwrap();
+        let session = TlSession::load_file_or_create(path).unwrap();
+        save_session(&session, path).unwrap();
+        assert!(std::path::Path::new(path).exists());
+        assert!(!std::path::Path::new(&format!("{path}.tmp")).exists());
+        // файл можно прочитать обратно, права закрыты для остальных
+        TlSession::load_file(path).unwrap();
+        use std::os::unix::fs::PermissionsExt;
+        let mode = std::fs::metadata(path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600);
+        // повторное сохранение поверх существующего файла тоже работает
+        save_session(&session, path).unwrap();
+    }
 }
