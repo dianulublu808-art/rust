@@ -5,24 +5,17 @@ mod error;
 mod modules;
 mod plugins;
 mod storage;
+mod term;
 
 use anyhow::Result;
 use config::Config;
 use std::sync::Arc;
 use tracing::error;
-use tracing_subscriber::{fmt, EnvFilter};
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    fmt()
-        .with_env_filter(
-            EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| EnvFilter::new("rustbot=info,warn")),
-        )
-        .with_target(false)
-        .with_thread_ids(false)
-        .compact()
-        .init();
+    term::init_logging();
+    term::banner();
 
     let config_path = std::env::args()
         .nth(1)

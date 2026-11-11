@@ -8,7 +8,7 @@ use grammers_client::{types::update::Message, Client, InputMessage, Update};
 use grammers_session::PeerRef;
 use std::collections::HashMap;
 use std::sync::Arc;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, warn};
 
 pub struct Dispatcher {
     modules: Registry,
@@ -166,11 +166,7 @@ impl Dispatcher {
             return Ok(());
         }
 
-        info!(
-            "команда '{}' в чате {}",
-            cmd,
-            msg.chat_id().bot_api_dialog_id()
-        );
+        let chat_id = msg.chat_id().bot_api_dialog_id();
 
         let handler: Option<Arc<dyn Module>> = {
             let g = self.modules.read().unwrap();
@@ -199,12 +195,23 @@ impl Dispatcher {
                     config: Arc::clone(&self.config),
                     storage: Arc::clone(&self.storage),
                 };
-                if let Err(e) = module.handle(&cmd, ctx).await {
-                    error!(module = module.name(), cmd = %cmd, "Ошибка модуля: {e:#}");
+                let started = std::time::Instant::now();
+                let result = module.handle(&cmd, ctx).await;
+                let ms = started.elapsed().as_millis();
+                let label = format!("{prefix}{cmd}");
+                match result {
+                    Ok(()) => crate::term::command_ok(&label, ms, chat_id),
+                    Err(e) => crate::term::command_err(&label, module.name(), &format!("{e:#}")),
                 }
                 Ok(())
             }
         }
+    }
+
+    /// (модулей, команд) — для стартового блока.
+    pub fn stats(&self) -> (usize, usize) {
+        let g = self.modules.read().unwrap();
+        (g.len(), g.iter().map(|m| m.commands().len()).sum())
     }
 
     fn command_prefix(&self) -> char {

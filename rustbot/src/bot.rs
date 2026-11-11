@@ -52,11 +52,10 @@ pub async fn run(config: Arc<Config>) -> Result<()> {
     let me = client.get_me().await?;
     let me_id = me.bare_id();
     let me_username = me.username().map(str::to_owned);
-    info!("Авторизован как: {} (id={})", me.full_name(), me_id);
 
     // Без кэша пиров (access_hash каналов/групп) обновления из них теряются —
     // отсюда "cannot getChannelDifference ... missing its hash".
-    warm_peer_cache(&client).await;
+    let dialogs = warm_peer_cache(&client).await;
     if let Err(e) = session.save_to_file(&config.session_path) {
         warn!("Не удалось сохранить сессию: {e}");
     }
@@ -77,12 +76,44 @@ pub async fn run(config: Arc<Config>) -> Result<()> {
         });
     }
 
+    let who = match &me_username {
+        Some(u) => format!("{} (@{u})", me.full_name()),
+        None => me.full_name(),
+    };
+    let prefix = storage
+        .get::<String>("settings.prefix")
+        .and_then(|p| p.chars().next())
+        .unwrap_or_else(|| config.prefix_char());
+
     let dispatcher = Arc::new(build_dispatcher(
         Arc::clone(&config),
         Arc::clone(&storage),
         me_id,
         me_username,
     )?);
+
+    let (modules, commands) = dispatcher.stats();
+    crate::term::info_block(
+        "Сессия",
+        &[
+            ("Аккаунт", crate::term::paint("1", &who)),
+            ("ID", me_id.to_string()),
+            ("Префикс", crate::term::paint("1;38;5;208", prefix)),
+            ("Модули", format!("{modules} · команд {commands}")),
+            (
+                "Диалоги",
+                match dialogs {
+                    Some(n) => format!("{n} в кэше"),
+                    None => crate::term::paint("93", "не загружены"),
+                },
+            ),
+        ],
+        &format!(
+            "{} {}",
+            crate::term::paint("1;92", "онлайн"),
+            crate::term::dim("· жду команды · Ctrl+C — выход")
+        ),
+    );
 
     let mut update_stream = client.stream_updates(
         updates,
@@ -95,7 +126,8 @@ pub async fn run(config: Arc<Config>) -> Result<()> {
     let loop_result = tokio::select! {
         res = event_loop(&client, &mut update_stream, Arc::clone(&dispatcher)) => res,
         _ = signal::ctrl_c() => {
-            info!("Ctrl+C — завершаю...");
+            println!();
+            info!("Ctrl+C — завершаю, сохраняю сессию...");
             Ok(())
         }
     };
@@ -152,7 +184,6 @@ async fn event_loop(
     update_stream: &mut grammers_client::client::updates::UpdateStream,
     dispatcher: Arc<Dispatcher>,
 ) -> Result<()> {
-    info!("Бот запущен! Жду команды...");
     let mut errors = 0u32;
     loop {
         let update = match update_stream.next().await {
@@ -180,8 +211,7 @@ async fn event_loop(
     }
 }
 
-async fn warm_peer_cache(client: &Client) {
-    info!("Загружаю список чатов (кэш пиров)...");
+async fn warm_peer_cache(client: &Client) -> Option<usize> {
     let fut = async {
         let mut dialogs = client.iter_dialogs();
         let mut n = 0usize;
@@ -194,9 +224,15 @@ async fn warm_peer_cache(client: &Client) {
         Ok::<usize, grammers_client::InvocationError>(n)
     };
     match tokio::time::timeout(Duration::from_secs(90), fut).await {
-        Ok(Ok(n)) => info!("Кэш чатов загружен: {n} диалогов"),
-        Ok(Err(e)) => warn!("Не удалось загрузить список чатов: {e}"),
-        Err(_) => warn!("Таймаут загрузки списка чатов"),
+        Ok(Ok(n)) => Some(n),
+        Ok(Err(e)) => {
+            warn!("Не удалось загрузить список чатов: {e}");
+            None
+        }
+        Err(_) => {
+            warn!("Таймаут загрузки списка чатов");
+            None
+        }
     }
 }
 
