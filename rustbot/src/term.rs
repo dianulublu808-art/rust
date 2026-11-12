@@ -100,6 +100,16 @@ pub fn command_ok(label: &str, ms: u128, chat: i64) {
     );
 }
 
+/// Увидели ваше исходящее сообщение с префиксом — до выполнения команды.
+pub fn seen(chat: i64, text: &str) {
+    let short: String = text.chars().take(40).collect();
+    println!("{} {} {}  {}", stamp(), dim("↗"), short.replace('\n', " "), dim(format!("чат {chat}")));
+}
+
+pub fn skipped(why: &str) {
+    println!("{} {} {}", stamp(), paint("93", "○"), why);
+}
+
 pub fn command_err(label: &str, module: &str, err: &str) {
     println!(
         "{} {} {}  {}: {}",

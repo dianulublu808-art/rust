@@ -154,13 +154,13 @@ impl Dispatcher {
         };
         let args: Vec<String> = args_raw.split_whitespace().map(str::to_owned).collect();
 
-        if security::is_chat_blocked(&self.storage, msg.chat_id().bot_api_dialog_id())
-            && !is_recovery_command(&cmd)
-        {
+        let chat_id = msg.chat_id().bot_api_dialog_id();
+        crate::term::seen(chat_id, &text);
+
+        if security::is_chat_blocked(&self.storage, chat_id) && !is_recovery_command(&cmd) {
+            crate::term::skipped("чат в блок-листе — команда проигнорирована (.unblockchat)");
             return Ok(());
         }
-
-        let chat_id = msg.chat_id().bot_api_dialog_id();
 
         let handler: Option<Arc<dyn Module>> = {
             let g = self.modules.read().unwrap();

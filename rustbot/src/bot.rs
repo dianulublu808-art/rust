@@ -56,7 +56,11 @@ pub async fn run(config: Arc<Config>) -> Result<()> {
     // отсюда "cannot getChannelDifference ... missing its hash".
     // grammers паникует на некоторых чатах ("channel ID out of range"), поэтому
     // прогрев кэша — в отдельной задаче: паника не должна ронять весь бот.
-    let dialogs = {
+    // По умолчанию ВЫКЛЮЧЕН: после паники библиотеки внутреннее состояние может
+    // оказаться испорчено, и бот перестанет отвечать. Включить: RUSTBOT_WARM_CACHE=1
+    let dialogs = if std::env::var_os("RUSTBOT_WARM_CACHE").is_none() {
+        None
+    } else {
         let c = client.clone();
         match tokio::spawn(async move { warm_peer_cache(&c).await }).await {
             Ok(n) => n,
@@ -117,7 +121,7 @@ pub async fn run(config: Arc<Config>) -> Result<()> {
                 "Диалоги",
                 match dialogs {
                     Some(n) => format!("{n} в кэше"),
-                    None => crate::term::paint("93", "не загружены"),
+                    None => crate::term::dim("отключены (RUSTBOT_WARM_CACHE=1 — включить)"),
                 },
             ),
         ],
@@ -217,9 +221,17 @@ async fn event_loop(
         };
         let dispatcher = Arc::clone(&dispatcher);
         let client = client.clone();
-        tokio::spawn(async move {
+        let task = tokio::spawn(async move {
             if let Err(e) = dispatcher.handle(client, update).await {
                 error!("Ошибка диспетчера: {e:#}");
+            }
+        });
+        // паника при разборе обновления не должна проходить молча
+        tokio::spawn(async move {
+            if let Err(e) = task.await {
+                if e.is_panic() {
+                    error!("Паника при обработке обновления (обновление пропущено)");
+                }
             }
         });
     }
