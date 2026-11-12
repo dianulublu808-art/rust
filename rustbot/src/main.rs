@@ -14,6 +14,10 @@ use tracing::error;
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    // место паники в логе — полезно для диагностики, если что-то упадёт
+    if std::env::var_os("RUST_BACKTRACE").is_none() {
+        std::env::set_var("RUST_BACKTRACE", "1");
+    }
     term::init_logging();
     term::banner();
 

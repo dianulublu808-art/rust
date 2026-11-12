@@ -54,7 +54,21 @@ pub async fn run(config: Arc<Config>) -> Result<()> {
 
     // Без кэша пиров (access_hash каналов/групп) обновления из них теряются —
     // отсюда "cannot getChannelDifference ... missing its hash".
-    let dialogs = warm_peer_cache(&client).await;
+    // grammers паникует на некоторых чатах ("channel ID out of range"), поэтому
+    // прогрев кэша — в отдельной задаче: паника не должна ронять весь бот.
+    let dialogs = {
+        let c = client.clone();
+        match tokio::spawn(async move { warm_peer_cache(&c).await }).await {
+            Ok(n) => n,
+            Err(e) => {
+                warn!(
+                    "Список чатов пропущен: библиотека упала ({}). Бот продолжит без полного кэша",
+                    if e.is_panic() { "panic" } else { "отмена" }
+                );
+                None
+            }
+        }
+    };
     if let Err(e) = save_session(&session, &config.session_path) {
         warn!("Не удалось сохранить сессию: {e}");
     }
