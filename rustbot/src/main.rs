@@ -6,6 +6,7 @@ mod modules;
 mod plugins;
 mod storage;
 mod term;
+mod version;
 
 use anyhow::Result;
 use config::Config;
@@ -14,6 +15,11 @@ use tracing::error;
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    if std::env::args().any(|a| a == "--version" || a == "-V") {
+        println!("rustbot {}", version::short());
+        return Ok(());
+    }
+
     // место паники в логе — полезно для диагностики, если что-то упадёт
     if std::env::var_os("RUST_BACKTRACE").is_none() {
         std::env::set_var("RUST_BACKTRACE", "1");

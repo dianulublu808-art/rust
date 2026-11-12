@@ -132,6 +132,8 @@ pub async fn run(config: Arc<Config>) -> Result<()> {
         ),
     );
 
+    tokio::spawn(watchdog(client.clone()));
+
     let mut update_stream = client.stream_updates(
         updates,
         UpdatesConfiguration {
@@ -234,6 +236,31 @@ async fn event_loop(
                 }
             }
         });
+    }
+}
+
+/// Сторож соединения: раз в минуту проверяет, отвечает ли Telegram. Если 3 раза
+/// подряд нет ответа — перезапускает процесс, вместо того чтобы молча висеть.
+async fn watchdog(client: Client) {
+    let mut tick = tokio::time::interval(Duration::from_secs(60));
+    tick.tick().await;
+    let mut fails = 0u32;
+    loop {
+        tick.tick().await;
+        let alive = matches!(
+            tokio::time::timeout(Duration::from_secs(30), client.get_me()).await,
+            Ok(Ok(_))
+        );
+        if alive {
+            fails = 0;
+            continue;
+        }
+        fails += 1;
+        warn!("Telegram не отвечает ({fails}/3)");
+        if fails >= 3 {
+            error!("Связь потеряна — перезапускаю бота");
+            crate::modules::updater::restart_after_failure("нет ответа от Telegram");
+        }
     }
 }
 

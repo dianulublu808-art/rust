@@ -147,9 +147,18 @@ async fn cmd_update(ctx: &Context) -> Result<()> {
     let same_branch = branch == current;
 
     if same_branch && old == new {
+        let running = crate::version::GIT.trim_end_matches('+');
+        let stale = if running != short(&old) && running != "unknown" {
+            format!(
+                "\n⚠️ Запущена сборка <code>{running}</code>, а в репозитории <code>{}</code> — пересобери и перезапусти: <code>cargo build --release</code>",
+                short(&old)
+            )
+        } else {
+            String::new()
+        };
         return ctx
             .edit(format!(
-                "✅ <b>Уже актуальная версия</b> (<code>{}</code>, ветка <code>{}</code>)",
+                "✅ <b>Уже актуальная версия</b> (<code>{}</code>, ветка <code>{}</code>){stale}",
                 short(&old),
                 esc(&branch)
             ))
@@ -219,6 +228,36 @@ async fn cmd_restart(ctx: &Context) -> Result<()> {
     do_restart();
 }
 
+/// Пауза перед аварийным перезапуском: чем чаще перезапуски подряд, тем дольше
+/// ждём (до 5 минут), чтобы не крутиться в цикле. Если бот проработал 10+ минут,
+/// счётчик сбрасывается. Возвращает (новый счётчик, пауза).
+pub fn restart_backoff(prev_count: u32, uptime_secs: u64) -> (u32, Duration) {
+    let count = if uptime_secs >= 600 { 0 } else { prev_count };
+    let delay = (count as u64 * 15).min(300);
+    (count + 1, Duration::from_secs(delay))
+}
+
+/// Перезапуск после сбоя (например, потери связи): с ожиданием и счётчиком
+/// подряд идущих перезапусков в переменной окружения.
+pub fn restart_after_failure(reason: &str) -> ! {
+    let prev: u32 = std::env::var("RUSTBOT_RESTARTS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(0);
+    let (count, delay) = restart_backoff(prev, super::ui::process_uptime());
+    eprintln!(
+        "перезапуск #{count}: {reason}{}",
+        if delay.is_zero() {
+            String::new()
+        } else {
+            format!(" (жду {} с)", delay.as_secs())
+        }
+    );
+    std::env::set_var("RUSTBOT_RESTARTS", count.to_string());
+    std::thread::sleep(delay);
+    do_restart()
+}
+
 fn do_restart() -> ! {
     use std::os::unix::process::CommandExt;
     let args: Vec<String> = std::env::args().collect();
@@ -226,4 +265,33 @@ fn do_restart() -> ! {
     // exec() никогда не возвращается, если успешен
     eprintln!("exec failed: {err}");
     std::process::exit(1);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn backoff_grows_and_caps() {
+        assert_eq!(restart_backoff(0, 5), (1, Duration::from_secs(0)));
+        assert_eq!(restart_backoff(1, 5), (2, Duration::from_secs(15)));
+        assert_eq!(restart_backoff(3, 5), (4, Duration::from_secs(45)));
+        assert_eq!(restart_backoff(50, 5), (51, Duration::from_secs(300)));
+    }
+
+    #[test]
+    fn backoff_resets_after_healthy_run() {
+        assert_eq!(restart_backoff(7, 601), (1, Duration::from_secs(0)));
+    }
+
+    #[test]
+    fn branch_validation() {
+        assert!(valid_branch("reload-and-config"));
+        assert!(valid_branch("feature/x_1.2"));
+        assert!(!valid_branch("-rf"));
+        assert!(!valid_branch("a..b"));
+        assert!(!valid_branch("a b"));
+        assert!(!valid_branch("a;rm"));
+        assert!(!valid_branch(""));
+    }
 }

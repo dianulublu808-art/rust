@@ -27,8 +27,8 @@ impl Module for InfoModule {
     }
 }
 
-fn version() -> &'static str {
-    env!("CARGO_PKG_VERSION")
+fn version() -> String {
+    format!("{} · {}", crate::version::VERSION, crate::version::GIT)
 }
 
 async fn account_label(ctx: &Context) -> Result<(String, i64)> {
@@ -94,6 +94,11 @@ async fn info_card(ctx: &Context) -> Result<()> {
             format!("🏓 Пинг <code>{ping_ms} мс</code>"),
             format!("⏱ Работает <b>{}</b>", ui::duration(ui::process_uptime())),
             format!("⌨️ Префикс <code>{}</code>", ctx.command_prefix()),
+            format!(
+                "🔨 Сборка <code>{}</code> · {}",
+                crate::version::GIT,
+                crate::version::built_at()
+            ),
         ],
     );
     let sys = ui::card(

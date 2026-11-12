@@ -1,5 +1,34 @@
 # RustBot — Telegram Userbot на Rust
 
+## Запуск и обновление (Termux)
+
+```bash
+./start.sh            # запуск с автоперезапуском при падении
+./update.sh           # fetch + fast-forward + сборка (откат кода, если сборка упала)
+./update.sh ветка     # перейти на другую ветку и собрать её
+./target/release/rustbot --version   # какая версия собрана
+```
+
+Версия (хеш коммита и время сборки) показывается в баннере, в `.info` и в `.update check`:
+так сразу видно, не запущен ли старый бинарник.
+
+Сборка на телефоне идёт в один поток (`-j1`), иначе Android может убить процесс по памяти.
+Бот сам перезапускается, если Telegram не отвечает 3 минуты подряд (сторож соединения).
+
+### Обычный `git pull`
+
+Работает в полном клоне (он весит < 1 МБ):
+
+```bash
+git clone https://github.com/<user>/<repo>.git && cd <repo>
+git checkout <ветка>
+git pull
+cd rustbot && ./update.sh
+```
+
+В неглубоком клоне (`--depth 1 --branch ...`) голый `git pull` не видит новых коммитов —
+используйте `./update.sh` или `.update` из Telegram.
+
 ## Стек
 - [grammers](https://github.com/Lonami/grammers) — MTProto-клиент
 - tokio — async runtime

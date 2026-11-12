@@ -148,7 +148,11 @@ pub fn banner() {
     }
     println!(
         "  {}",
-        dim(format!("Telegram userbot · v{}", env!("CARGO_PKG_VERSION")))
+        dim(format!(
+            "Telegram userbot · {} · собран {}",
+            crate::version::short(),
+            crate::version::built_at()
+        ))
     );
     println!();
 }
