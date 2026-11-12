@@ -29,6 +29,11 @@ const SETTINGS: &[Setting] = &[
         kind: Kind::Secs { min: 1, max: 600 },
     },
     Setting {
+        key: "update.jobs",
+        desc: "Потоков сборки при .update (1 = меньше памяти)",
+        kind: Kind::Secs { min: 1, max: 4 },
+    },
+    Setting {
         key: "translate.lang",
         desc: "Язык перевода по умолчанию",
         kind: Kind::Lang,
@@ -51,6 +56,12 @@ pub fn exec_timeout(storage: &Storage, config: &Config) -> u64 {
     storage
         .get::<u64>("cfg.exec.timeout")
         .unwrap_or(config.exec_timeout)
+}
+
+/// Потоков `cargo build` при `.update`. По умолчанию 1: на телефоне больше —
+/// и Android убивает сборку по памяти.
+pub fn update_jobs(storage: &Storage) -> u64 {
+    storage.get::<u64>("cfg.update.jobs").unwrap_or(1)
 }
 
 pub fn translate_lang(storage: &Storage) -> String {
@@ -86,6 +97,7 @@ fn default_secs(key: &str, config: &Config) -> u64 {
     match key {
         "eval.timeout" => config.eval_timeout,
         "exec.timeout" => config.exec_timeout,
+        "update.jobs" => 1,
         _ => 0,
     }
 }

@@ -13,7 +13,7 @@ use std::time::Duration;
 use tracing::{debug, warn};
 
 /// Предел времени одного вызова модуля (`.update` со сборкой — самый долгий).
-const MODULE_TIMEOUT: Duration = Duration::from_secs(2400);
+const MODULE_TIMEOUT: Duration = Duration::from_secs(7200);
 
 pub struct Dispatcher {
     modules: Registry,

@@ -12,7 +12,7 @@ use crate::{
 use anyhow::{bail, Context as _, Result};
 use grammers_client::{Client, SignInError, UpdatesConfiguration};
 use grammers_mtsender::SenderPool;
-use grammers_session::storages::TlSession;
+use grammers_session::{storages::TlSession, PeerRef};
 use std::sync::{Arc, RwLock};
 use tokio::signal;
 use std::time::Duration;
@@ -132,6 +132,8 @@ pub async fn run(config: Arc<Config>) -> Result<()> {
         ),
     );
 
+    announce_update(&client, &storage).await;
+
     tokio::spawn(watchdog(client.clone()));
 
     let mut update_stream = client.stream_updates(
@@ -236,6 +238,43 @@ async fn event_loop(
                 }
             }
         });
+    }
+}
+
+/// После `.update` бот перезапускается — подтверждаем в «Избранном», что всё прошло.
+async fn announce_update(client: &Client, storage: &Storage) {
+    let Some(n) = storage.get::<serde_json::Value>("update.notice") else {
+        return;
+    };
+    let _ = storage.del("update.notice");
+
+    let from = n["from"].as_str().unwrap_or("?");
+    let to = n["to"].as_str().unwrap_or("?");
+    let secs = n["secs"].as_u64().unwrap_or(0);
+    let subject = n["subject"].as_str().unwrap_or("");
+    let running = crate::version::GIT.trim_end_matches('+');
+
+    let mut rows = vec![
+        format!("🔖 <code>{from}</code> → <code>{to}</code>"),
+        format!("⏱ Сборка {}", crate::modules::ui::duration(secs)),
+        format!("🦀 Запущено <code>{}</code>", crate::version::short()),
+    ];
+    if !subject.is_empty() {
+        rows.insert(1, format!("💬 {}", crate::modules::esc(subject)));
+    }
+    let head = if running == to {
+        "✅ <b>Бот обновлён</b>"
+    } else {
+        "⚠️ <b>Бот перезапущен, но версия не совпадает</b>"
+    };
+    let text = format!("{head}\n{}", crate::modules::ui::quote(&rows));
+
+    let saved = PeerRef::from(grammers_client::grammers_tl_types::enums::InputPeer::PeerSelf);
+    if let Err(e) = client
+        .send_message(saved, grammers_client::InputMessage::new().html(text))
+        .await
+    {
+        warn!("Не удалось отправить подтверждение обновления: {e}");
     }
 }
 
