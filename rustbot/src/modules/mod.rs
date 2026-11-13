@@ -18,6 +18,7 @@ pub mod exec;
 pub mod help;
 pub mod info;
 pub mod notes;
+pub mod oracle;
 pub mod ping;
 pub mod raw;
 pub mod reload;

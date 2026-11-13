@@ -30,6 +30,7 @@ fn module_meta(name: &str) -> (&'static str, String) {
         "updater" => ("🔄", "Обновление"),
         "reload" => ("🧩", "Плагины"),
         "help" => ("📖", "Справка"),
+        "oracle" => ("🔮", "Оракул"),
         other => return ("🧩", esc(other)),
     };
     (icon, title.to_owned())
